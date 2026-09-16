@@ -14,11 +14,11 @@ export function BattleScene() {
 
   const handlePointerDown = (event) => {
     if (event.button !== 0) return;
-    animation.startThrow();
+    animation.registerTap();
   };
 
   return (
-    <section className="battle-frame" aria-label="Pixel-art PokÃ©mon battle demo">
+    <section className="battle-frame" aria-label="Pixel-art battle demo">
       <div
         className={`battle-scene ${animation.isAnimating ? "battle-scene--animating" : ""}`}
         onPointerDown={handlePointerDown}
@@ -39,6 +39,7 @@ export function BattleScene() {
           start={battleLayout.projectile.start}
           target={battleLayout.projectile.target}
           arcHeight={animation.projectileArcHeight}
+          speedMultiplier={animation.throwSpeed}
           onComplete={animation.completeProjectile}
         />
 

@@ -1,20 +1,31 @@
 ﻿import React, { useEffect, useRef, useState } from "react";
 import { animationConfig } from "../../config/animationConfig";
 
-export function Projectile({ sprite, start, target, arcHeight, onComplete }) {
+export function Projectile({ sprite, start, target, arcHeight, speedMultiplier, onComplete }) {
   if (!sprite) return null;
 
   const [position, setPosition] = useState(start);
   const completedRef = useRef(false);
+  const speedRef = useRef(speedMultiplier);
+
+  useEffect(() => {
+    speedRef.current = speedMultiplier;
+  }, [speedMultiplier]);
 
   useEffect(() => {
     let frameId;
-    let startTime;
+    let previousTime;
+    let progress = 0;
     completedRef.current = false;
 
     const animate = (time) => {
-      startTime ??= time;
-      const progress = Math.min((time - startTime) / animationConfig.projectileDuration, 1);
+      previousTime ??= time;
+      progress = Math.min(
+        progress + ((time - previousTime) * speedRef.current) / animationConfig.projectileDuration,
+        1,
+      );
+      previousTime = time;
+
       const x = start.x + (target.x - start.x) * progress;
       const baselineY = start.y + (target.y - start.y) * progress;
       const y = baselineY - 4 * arcHeight * progress * (1 - progress);
