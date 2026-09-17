@@ -1,0 +1,25 @@
+:root {
+  font-family: "Courier New", monospace;
+  color: #18262e;
+  background: #172d3a;
+}
+
+* { box-sizing: border-box; }
+
+html, body, #root { min-width: 100%; min-height: 100%; margin: 0; }
+
+body { min-height: 100vh; }
+
+button, img { image-rendering: pixelated; image-rendering: crisp-edges; }
+
+.app-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px),
+    linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px),
+    #172d3a;
+  background-size: 18px 18px;
+}
