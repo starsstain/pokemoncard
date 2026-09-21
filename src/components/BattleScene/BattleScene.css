@@ -36,7 +36,40 @@
 .grass-platform { z-index: 1; }
 .trainer-sprite { z-index: 2; }
 .pokemon-sprite { z-index: 3; }
-.pokemon-sprite--hit { animation: enemy-hit 260ms steps(1, end); }
+.pokemon-sprite--hit {
+  animation: enemy-hit 260ms steps(1, end);
+  filter: brightness(1.5);
+}
+
+@keyframes enemy-hit {
+  0%, 100% { transform: translate(0, 0); }
+  20% { transform: translate(-2.5%, 1%); }
+  40% { transform: translate(2.5%, -1%); }
+  60% { transform: translate(-1.8%, 0.8%); }
+  80% { transform: translate(1.8%, -0.5%); }
+}
+
+/* 自动攻击：远程法术攻击，原地施法（微缩放 + 发光），不移动身体 */
+.pokemon-sprite--player.pokemon-sprite--attacking,
+.pokemon-sprite--enemy.pokemon-sprite--attacking {
+  animation: spell-cast 560ms ease-in-out;
+}
+
+@keyframes spell-cast {
+  0% { transform: scale(1); filter: brightness(1); }
+  35% { transform: scale(1.04); filter: brightness(1.15) drop-shadow(0 0 6px #7fd4ff); }
+  50% { transform: scale(0.97); filter: brightness(1.25) drop-shadow(0 0 10px #7fd4ff); }
+  70% { transform: scale(1.02); filter: brightness(1.1) drop-shadow(0 0 5px #7fd4ff); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+/* 战斗不能：变灰下沉 */
+.pokemon-sprite--fainted {
+  filter: grayscale(1) brightness(0.6);
+  opacity: 0.5;
+  transform: translateY(18%);
+  transition: filter 400ms, opacity 400ms, transform 400ms;
+}
 
 .projectile {
   position: absolute;
@@ -56,18 +89,49 @@
 
 @keyframes projectile-spin { to { filter: brightness(1.12); transform: rotate(360deg); } }
 
-@keyframes enemy-hit {
-  0%, 100% { transform: translateX(0); }
-  18% { transform: translateX(-6%); }
-  35% { transform: translateX(6%); }
-  52% { transform: translateX(-4%); }
-  70% { transform: translateX(4%); }
-}
-
 .debug-overlay { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
 .debug-dot { position: absolute; width: 7px; height: 7px; transform: translate(-50%, -50%); border-radius: 50%; background: #f22; }
 .debug-dot::after { content: attr(data-label); position: absolute; top: 8px; left: 5px; color: #f22; font: 8px monospace; }
 .debug-box { position: absolute; border: 1px solid #f22; }
+
+.battle-result {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: rgba(10, 24, 32, 0.55);
+}
+
+.battle-result__text {
+  margin: 0;
+  font-family: "Courier New", monospace;
+  font-weight: bold;
+  font-size: clamp(28px, 6vw, 56px);
+  letter-spacing: 4px;
+  text-shadow: 0 3px 0 #0a1820;
+}
+
+.battle-result__text--win { color: #4cd964; }
+.battle-result__text--lose { color: #ff3b30; }
+
+.battle-restart {
+  position: static;
+  transform: none;
+  padding: 8px 18px;
+  font-family: "Courier New", monospace;
+  font-weight: bold;
+  font-size: 16px;
+  color: #f8f8d8;
+  background: #244052;
+  border: 3px solid #0a1820;
+  cursor: pointer;
+}
+
+.battle-restart:hover { background: #35617c; }
 
 @media (max-width: 520px) {
   .app-shell { padding: 14px; }

@@ -68,11 +68,14 @@ export function useThrowAnimation() {
     for (const trainerFrame of [2, 3, 4]) {
       await waitForAnimationTime(animationConfig.trainerFrameDuration);
       if (!mountedRef.current) return;
+      // 战斗结束后会被重置回 IDLE，中断后续投掷帧
+      if (animationRef.current.phase !== BattleAnimationState.THROWING) return;
       updateAnimation({ ...animationRef.current, trainerFrame });
     }
 
     await waitForAnimationTime(animationConfig.projectileLaunchDelay);
     if (!mountedRef.current) return;
+    if (animationRef.current.phase !== BattleAnimationState.THROWING) return;
     updateAnimation({
       ...animationRef.current,
       phase: BattleAnimationState.PROJECTILE_FLYING,
@@ -119,6 +122,8 @@ export function useThrowAnimation() {
     // Hit feedback always plays at its authored duration, unaffected by tapping.
     await new Promise((resolve) => window.setTimeout(resolve, animationConfig.hitDuration));
     if (!mountedRef.current) return;
+    // 结算期间被取消（重置回 IDLE）就直接退出，不补扔、不覆盖新一局的状态
+    if (animationRef.current.phase !== BattleAnimationState.HIT) return;
 
     const shouldThrowAgain = pendingThrowRef.current;
     pendingThrowRef.current = false;
@@ -131,10 +136,18 @@ export function useThrowAnimation() {
     }
   }, [startThrow, updateAnimation]);
 
+  // 战斗结束后冻结投掷：清掉排队中的下一次投掷，回到待机
+  const cancelAnimation = useCallback(() => {
+    pendingThrowRef.current = false;
+    speedRef.current = 1;
+    updateAnimation(initialAnimation);
+  }, [updateAnimation]);
+
   return {
     ...animation,
     isAnimating: animation.phase !== BattleAnimationState.IDLE,
     registerTap,
     completeProjectile,
+    cancelAnimation,
   };
 }

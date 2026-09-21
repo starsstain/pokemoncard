@@ -1,0 +1,59 @@
+.health-bar {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: #f8f8d8;
+  border: 2px solid #0a1820;
+  box-shadow: 0 2px 0 rgba(10, 24, 32, 0.4);
+  font-family: "Courier New", monospace;
+  font-weight: bold;
+  font-size: clamp(8px, 1.4vw, 13px);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.health-bar--enemy {
+  left: 4%;
+  top: 3%;
+}
+
+.health-bar--player {
+  right: 4%;
+  top: 62%;
+}
+
+.health-bar__name {
+  color: #0a1820;
+}
+
+.health-bar__track {
+  width: clamp(70px, 18vw, 150px);
+  height: 10px;
+  background: #0a1820;
+  border: 1px solid #0a1820;
+  overflow: hidden;
+}
+
+.health-bar__fill {
+  height: 100%;
+  transition: width 240ms ease-out, background-color 240ms ease-out;
+}
+
+.health-bar__stats {
+  color: #0a1820;
+}
+
+.health-bar--low .health-bar__fill {
+  animation: health-blink 480ms steps(1, end) infinite;
+}
+
+.health-bar--low .health-bar__stats {
+  animation: health-blink 480ms steps(1, end) infinite;
+}
+
+@keyframes health-blink {
+  50% { opacity: 0.35; }
+}
