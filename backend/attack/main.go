@@ -7,9 +7,15 @@ import (
 	"log"
 	"mime"
 	"net/http"
+	"time"
 )
 
-const validationPath = "/internal/v1/attack-validations"
+const (
+	validationPath     = "/internal/v1/attack-validations"
+	debugFaultHeader   = "X-Pokemon-Debug-Fault"
+	faultAttack500     = "attack-500"
+	faultAttackTimeout = "attack-timeout"
+)
 
 // attackRequest 对应请求 JSON；指针用于区分缺失或 null 与明确提交的整数 0。
 type attackRequest struct {
@@ -45,6 +51,13 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
 		status = http.StatusMethodNotAllowed
 		return
+	}
+	if r.Header.Get(debugFaultHeader) == faultAttack500 {
+		status = http.StatusInternalServerError
+		return
+	}
+	if r.Header.Get(debugFaultHeader) == faultAttackTimeout {
+		time.Sleep(600 * time.Millisecond)
 	}
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || contentType != "application/json" {
