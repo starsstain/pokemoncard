@@ -9,7 +9,14 @@ import (
 	"time"
 )
 
-const validationPath = "/api/v1/attack-validations"
+const (
+	validationPath     = "/api/v1/attack-validations"
+	debugFaultHeader   = "X-Pokemon-Debug-Fault"
+	faultBattle502     = "battle-502"
+	faultBattle503     = "battle-503"
+	faultAttack500     = "attack-500"
+	faultAttackTimeout = "attack-timeout"
+)
 
 // main 启动独立的 battle 进程，attack 需另行启动。
 func main() {
@@ -28,6 +35,7 @@ func newHandler(attackURL string) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
+		setCORSHeaders(w)
 		defer func() {
 			if problem := recover(); problem != nil {
 				status = http.StatusInternalServerError
@@ -40,6 +48,10 @@ func newHandler(attackURL string) http.Handler {
 			status = http.StatusNotFound
 			return
 		}
+		if r.Method == http.MethodOptions {
+			status = http.StatusNoContent
+			return
+		}
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
 			status = http.StatusMethodNotAllowed
@@ -47,6 +59,16 @@ func newHandler(attackURL string) http.Handler {
 		}
 
 		// 原样转发请求体，不解析 JSON，也不重复检查攻击规则。
+		fault := r.Header.Get(debugFaultHeader)
+		switch fault {
+		case faultBattle502:
+			status = http.StatusBadGateway
+			return
+		case faultBattle503:
+			status = http.StatusServiceUnavailable
+			return
+		}
+
 		request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, attackURL, r.Body)
 		if err != nil {
 			log.Printf("battle 创建转发请求失败：%v", err)
@@ -55,6 +77,9 @@ func newHandler(attackURL string) http.Handler {
 		request.ContentLength = r.ContentLength
 		request.Header["Content-Type"] = r.Header.Values("Content-Type")
 		// 每次只调用一次，不设置可重放的请求体，也不自动重试。
+		if fault == faultAttack500 || fault == faultAttackTimeout {
+			request.Header.Set(debugFaultHeader, fault)
+		}
 		response, err := client.Do(request)
 		if err != nil {
 			status = forwardingStatus(err)
@@ -78,4 +103,10 @@ func forwardingStatus(err error) int {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusBadGateway
+}
+
+func setCORSHeaders(w http.ResponseWriter) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", http.MethodPost+", "+http.MethodOptions)
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, "+debugFaultHeader)
 }

@@ -5,6 +5,7 @@ import { pokemonStats } from "../../config/pokemonStats";
 import { useThrowAnimation } from "../../hooks/useThrowAnimation";
 import { useBattle } from "../../hooks/useBattle";
 import { battleAssets } from "../../utils/assetLoader";
+import { requestDebugStatus } from "../../services/attackValidation";
 import { GrassPlatform } from "../GrassPlatform/GrassPlatform";
 import { HealthBar } from "../HealthBar/HealthBar";
 import { Pokemon } from "../Pokemon/Pokemon";
@@ -15,6 +16,7 @@ import "./BattleScene.css";
 export function BattleScene() {
   const animation = useThrowAnimation();
   const battle = useBattle();
+  const [isDevPanelOpen, setIsDevPanelOpen] = React.useState(false);
 
   // 投掷物命中时对敌方宝可梦结算额外伤害
   const dealDamageRef = useRef(battle.dealDamage);
@@ -39,6 +41,11 @@ export function BattleScene() {
     animation.registerTap();
   };
 
+  const handleDebugStatusClick = (statusCode) => {
+    // The Network panel is the only result surface for these standalone requests.
+    void requestDebugStatus(statusCode).catch(() => {});
+  };
+
   return (
     <section className="battle-frame" aria-label="Pixel-art battle demo">
       <div
@@ -49,6 +56,33 @@ export function BattleScene() {
         aria-label={animation.isAnimating ? "Attack animation in progress" : "Click to throw an item"}
       >
         <img className="battle-background" src={battleAssets.backTallGrass} alt="Tall grass battlefield" draggable="false" />
+
+        <div className="dev-tools" onPointerDown={(event) => event.stopPropagation()}>
+          <button
+            className="dev-tools__toggle"
+            type="button"
+            onClick={() => setIsDevPanelOpen((isOpen) => !isOpen)}
+          >
+            dev
+          </button>
+
+          {isDevPanelOpen && (
+            <div className="dev-tools__panel">
+              <span className="dev-tools__label">返回状态码：</span>
+              {[200, 400, 422, 500, 502, 503, 504].map((statusCode) => (
+                <button
+                  key={statusCode}
+                  className="dev-tools__status"
+                  type="button"
+                  onClick={() => handleDebugStatusClick(statusCode)}
+                >
+                  {statusCode}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
 
         <HealthBar
           name={pokemonStats.enemy.name}
