@@ -3,6 +3,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -31,6 +32,8 @@ func main() {
 		tracer.WithService("battle"),
 		tracer.WithEnv("school"),
 		tracer.WithAgentAddr("127.0.0.1:8126"),
+		tracer.WithGlobalTag("version", "1.0.0"),
+		tracer.WithGlobalTag("team", "bj-xsolla-school-group-2"),
 	)
 	defer tracer.Stop()
 	log.Printf("battle 正在监听 http://%s%s", address, validationPath)
@@ -40,6 +43,17 @@ func main() {
 		tracer.Stop()
 		log.Fatal(err)
 	}
+}
+
+// logWithTrace 输出带 dd.trace_id 的结构化日志，实现 log↔trace 互跳。
+func logWithTrace(r *http.Request, level, msg string, args ...any) {
+	span, ok := tracer.SpanFromContext(r.Context())
+	var traceID string
+	if ok {
+		traceID = fmt.Sprintf("%d", span.Context().TraceID())
+	}
+	prefix := fmt.Sprintf("level=%s service=battle dd.trace_id=%s ", level, traceID)
+	log.Printf(prefix+msg, args...)
 }
 
 // newHandler 创建转发处理器；传入 attack 地址，方便测试使用临时服务。
@@ -55,10 +69,10 @@ func newHandler(attackURL string) http.Handler {
 		defer func() {
 			if problem := recover(); problem != nil {
 				status = http.StatusInternalServerError
-				log.Printf("battle 内部异常：%v", problem)
+				logWithTrace(r, "ERROR", "battle 内部异常：%v", problem)
 			}
 			w.WriteHeader(status)
-			log.Printf("battle method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+			logWithTrace(r, "INFO", "battle method=%s path=%s status=%d", r.Method, r.URL.Path, status)
 		}()
 		if r.URL.Path != validationPath {
 			status = http.StatusNotFound
@@ -79,15 +93,17 @@ func newHandler(attackURL string) http.Handler {
 		switch fault {
 		case faultBattle502:
 			status = http.StatusBadGateway
+			logWithTrace(r, "ERROR", "battle 故障注入：返回 502")
 			return
 		case faultBattle503:
 			status = http.StatusServiceUnavailable
+			logWithTrace(r, "ERROR", "battle 故障注入：返回 503")
 			return
 		}
 
 		request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, attackURL, r.Body)
 		if err != nil {
-			log.Printf("battle 创建转发请求失败：%v", err)
+			logWithTrace(r, "ERROR", "battle 创建转发请求失败：%v", err)
 			return
 		}
 		request.ContentLength = r.ContentLength
@@ -99,7 +115,7 @@ func newHandler(attackURL string) http.Handler {
 		response, err := client.Do(request)
 		if err != nil {
 			status = forwardingStatus(err)
-			log.Printf("battle 调用 attack 失败：%v", err)
+			logWithTrace(r, "ERROR", "battle 调用 attack 失败：%v", err)
 			return
 		}
 		defer response.Body.Close()

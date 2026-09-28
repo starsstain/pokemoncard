@@ -1,0 +1,15 @@
+{
+  "name": "[宝可梦] battle p95 延迟过高",
+  "type": "query alert",
+  "query": "avg(last_5m):p95:trace.net.http.request.duration{service:battle} > 500",
+  "message": "{{#is_alert}}🔴 battle 服务 p95 延迟已达 {{value}}ms，超过 500ms 阈值，用户可能在等待。\n排查：APM → Services → battle → Traces 看慢请求火焰图。{{/is_alert}}\n{{#is_recovery}}✅ battle p95 延迟已恢复正常。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
+  "tags": ["team:bj-xsolla-school-group-2"],
+  "options": {
+    "thresholds": {
+      "critical": 500,
+      "warning": 300
+    },
+    "notify_no_data": false,
+    "evaluation_delay": 60
+  }
+}

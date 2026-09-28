@@ -1,0 +1,15 @@
+{
+  "name": "[宝可梦] battle 流量中断（无数据心跳）",
+  "type": "query alert",
+  "query": "sum(last_5m):sum:trace.net.http.request.hits{service:battle}.as_count() < 1",
+  "message": "{{#is_alert}}🔴 battle 服务过去 5 分钟无请求流量，可能服务挂了或前端入口断了。\n排查：先看 battle 健康检查监控器是否也红了，再看进程是否存活。{{/is_alert}}\n{{#is_recovery}}✅ battle 流量已恢复。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
+  "tags": ["team:bj-xsolla-school-group-2"],
+  "options": {
+    "thresholds": {
+      "critical": 1
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 10,
+    "evaluation_delay": 60
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "[宝可梦] battle 5xx 错误率过高",
+  "type": "query alert",
+  "query": "sum(last_5m):sum:trace.net.http.request.errors{service:battle}.as_rate() > 0",
+  "message": "{{#is_alert}}🔴 battle 服务出现 5xx 错误，5 分钟内错误率 {{value}}。\n可能原因：attack 不可用、内部异常。排查：Logs 搜索 service:battle level=ERROR。{{/is_alert}}\n{{#is_recovery}}✅ battle 5xx 错误已恢复。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
+  "tags": ["team:bj-xsolla-school-group-2"],
+  "options": {
+    "thresholds": {
+      "critical": 0
+    },
+    "notify_no_data": false,
+    "evaluation_delay": 60
+  }
+}
