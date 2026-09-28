@@ -12,7 +12,7 @@
 | 程序 error | 日志采集 + 日志监控器 | 监控器：battle出现5xx错误（5 分钟超 3 条报警）、程序内部异常（panic 日志） |
 | p95 / p99 + trace | 代码内嵌 Datadog APM（dd-trace-go） | 监控器：P95/P99延迟过高；APM → Services 里 battle/attack 两个服务、火焰图展示 battle→attack 全链路 |
 
-监控器统一命名 `[宝可梦] xxx`，统一标签 `team:zhang-pokemon`（Monitor List 里按标签筛选即可只看我们的）。
+监控器统一命名 `[宝可梦] xxx`，统一标签 `team:bj-xsolla-school-group-2`（Monitor List 里按标签筛选即可只看我们的）。
 
 ## 组员复刻步骤（Windows，约 15 分钟）
 
@@ -63,7 +63,7 @@ go run ./battle 2>&1 | tee -a /c/dd-logs/battle.log
 
 ## 演示剧本（约 5 分钟）
 
-1. **正常态**：Monitor List 按 team:zhang-pokemon 筛选，7 个监控器全绿。
+1. **正常态**：Monitor List 按 team:bj-xsolla-school-group-2 筛选，7 个监控器全绿。
 2. **注入错误**：Git Bash 打 6 个 502（或点前端 debug 按钮）：
    ```bash
    for i in $(seq 1 6); do curl -s -o /dev/null -X POST http://127.0.0.1:8080/api/v1/attack-validations \

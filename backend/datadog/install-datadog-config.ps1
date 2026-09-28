@@ -4,13 +4,19 @@ $ErrorActionPreference = "Stop"
 $src = $PSScriptRoot
 $confDir = "C:\ProgramData\Datadog"
 
-Write-Host "== 1/4 打开日志采集开关 (logs_enabled) =="
+Write-Host "== 1/4 打开日志采集开关 + 设置全局 team 标签 =="
 $ddYaml = Join-Path $confDir "datadog.yaml"
 $content = Get-Content $ddYaml -Raw
 if ($content -match '(?m)^\s*#?\s*logs_enabled:') {
     $content = $content -replace '(?m)^\s*#?\s*logs_enabled:.*', 'logs_enabled: true'
 } else {
     $content += "`r`nlogs_enabled: true`r`n"
+}
+# 全局 team 标签：让 CPU/内存/磁盘等所有指标都带上 team 标签，监控器可按 team 筛选
+if ($content -match '(?m)^\s*#?\s*tags:') {
+    $content = $content -replace '(?m)^\s*#?\s*tags:.*', "tags:`r`n  - team:bj-xsolla-school-group-2"
+} else {
+    $content += "`r`ntags:`r`n  - team:bj-xsolla-school-group-2`r`n"
 }
 Set-Content -Path $ddYaml -Value $content
 Write-Host "   OK"

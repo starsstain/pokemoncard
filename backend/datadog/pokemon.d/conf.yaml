@@ -7,8 +7,12 @@ logs:
     path: C:/dd-logs/battle.log
     service: battle
     source: pokemon-battle
+    tags:
+      - team:bj-xsolla-school-group-2
 
   - type: file
     path: C:/dd-logs/attack.log
     service: attack
     source: pokemon-attack
+    tags:
+      - team:bj-xsolla-school-group-2
