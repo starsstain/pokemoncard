@@ -1,5 +1,5 @@
-# 健康检查：Agent 每分钟代替用户向 battle 服务发一个真实业务请求，
-# 返回不是 200 就会触发 http_check 告警。请求会走完 battle -> attack 全链路。
+# 健康检查：Agent 每分钟代替用户向 battle/attack 服务发真实业务请求，
+# 返回不是 200 就会触发 http_check 告警。battle 的请求会走完 battle -> attack 全链路。
 init_config: null
 
 instances:
@@ -9,6 +9,18 @@ instances:
     headers:
       Content-Type: application/json
     data: '{"attack_type":"collision","expected_damage":18}'
+    http_response_status_code: 200
+    timeout: 5
+    min_collection_interval: 60
+    tags:
+      - team:bj-xsolla-school-group-2
+
+  - name: attack-health
+    url: http://127.0.0.1:8081/internal/v1/attack-validations
+    method: POST
+    headers:
+      Content-Type: application/json
+    data: '{"attack_type":"throw","expected_damage":20}'
     http_response_status_code: 200
     timeout: 5
     min_collection_interval: 60

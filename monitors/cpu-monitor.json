@@ -1,0 +1,15 @@
+{
+  "name": "[宝可梦] CPU 使用率过高",
+  "type": "metric alert",
+  "query": "avg(last_5m):avg:system.cpu.user{team:bj-xsolla-school-group-2} > 80",
+  "message": "{{#is_alert}}🔴 CPU 使用率已达 {{value}}%，超过 80% 阈值。\n可能原因：请求量激增、死循环、goroutine 泄漏。排查：Infrastructure → Host Map 看哪台机器高。{{/is_alert}}\n{{#is_recovery}}✅ CPU 使用率已恢复正常。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
+  "tags": ["team:bj-xsolla-school-group-2"],
+  "options": {
+    "thresholds": {
+      "critical": 80,
+      "warning": 70
+    },
+    "notify_no_data": false,
+    "evaluation_delay": 60
+  }
+}

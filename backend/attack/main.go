@@ -3,12 +3,14 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"mime"
 	"net/http"
 	"time"
 
+	"github.com/DataDog/datadog-go/v5/statsd"
 	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
@@ -26,7 +28,20 @@ type attackRequest struct {
 	ExpectedDamage *int   `json:"expected_damage"`
 }
 
-// main 启动独立的 attack 进程；battle 将在后续通过 HTTP 调用此服务。
+// statsd 客户端：发业务指标（DogStatsD）。
+var statsdClient = mustStatsd()
+
+func mustStatsd() *statsd.Client {
+	// Agent 默认监听 8125/UDP；与 trace 上报一样显式写 IPv4。
+	c, err := statsd.New("127.0.0.1:8125")
+	if err != nil {
+		// 指标上报失败不影响服务启动，降级为 no-op。
+		log.Printf("attack statsd 初始化失败，指标不上报：%v", err)
+		return nil
+	}
+	return c
+}
+
 func main() {
 	const address = "127.0.0.1:8081"
 	// APM：启动 Datadog 追踪器，trace 数据经本机 Agent（8126 端口）上报。
@@ -35,6 +50,8 @@ func main() {
 		tracer.WithService("attack"),
 		tracer.WithEnv("school"),
 		tracer.WithAgentAddr("127.0.0.1:8126"),
+		tracer.WithGlobalTag("version", "1.0.0"),
+		tracer.WithGlobalTag("team", "bj-xsolla-school-group-2"),
 	)
 	defer tracer.Stop()
 	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
@@ -46,6 +63,17 @@ func main() {
 	}
 }
 
+// logWithTrace 输出带 dd.trace_id 的结构化日志，实现 log↔trace 互跳。
+func logWithTrace(r *http.Request, level, msg string, args ...any) {
+	span, ok := tracer.SpanFromContext(r.Context())
+	var traceID string
+	if ok {
+		traceID = fmt.Sprintf("%d", span.Context().TraceID())
+	}
+	prefix := fmt.Sprintf("level=%s service=attack dd.trace_id=%s ", level, traceID)
+	log.Printf(prefix+msg, args...)
+}
+
 // handleValidation 读取请求并返回状态码；路径、方法和内部错误的响应体也保持为空。
 func handleValidation(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusInternalServerError
@@ -53,10 +81,18 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		if problem := recover(); problem != nil {
 			status = http.StatusInternalServerError
-			log.Printf("attack 内部异常：%v", problem)
+			logWithTrace(r, "ERROR", "attack 内部异常：%v", problem)
 		}
 		w.WriteHeader(status)
-		log.Printf("attack method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+		logWithTrace(r, "INFO", "attack method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+		// 业务指标：按结果计数，result=success|failure。
+		if statsdClient != nil {
+			result := "success"
+			if status >= 400 {
+				result = "failure"
+			}
+			_ = statsdClient.Incr("pokemon.attack.validation.count", []string{"result:" + result}, 1)
+		}
 	}()
 	//请求校验
 	if r.URL.Path != validationPath {
@@ -70,6 +106,7 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.Header.Get(debugFaultHeader) == faultAttack500 {
 		status = http.StatusInternalServerError
+		logWithTrace(r, "ERROR", "attack 故障注入：返回 500")
 		return
 	}
 	if r.Header.Get(debugFaultHeader) == faultAttackTimeout {
@@ -78,6 +115,7 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || contentType != "application/json" {
 		status = http.StatusBadRequest
+		logWithTrace(r, "WARN", "attack Content-Type 无效：%v", err)
 		return
 	}
 
@@ -85,19 +123,27 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
 	if err := decoder.Decode(&input); err != nil {
 		status = http.StatusBadRequest
+		logWithTrace(r, "WARN", "attack JSON 解析失败：%v", err)
 		return
 	}
 	// 一个请求只能有一个 JSON 对象；拒绝对象后拼接另一份 JSON 或无效字符。
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		status = http.StatusBadRequest
+		logWithTrace(r, "WARN", "attack 请求体多余内容：%v", err)
 		return
 	}
-	status = validateAttack(input)
+	status = validateAttack(r, input)
 }
 
 // validateAttack 先确认字段与类型，再比较固定伤害
-func validateAttack(input attackRequest) int {
+func validateAttack(r *http.Request, input attackRequest) int {
+	// 自定义 span tag：把关键业务实体打到 trace 上，方便在 APM 里筛选。
+	if span, ok := tracer.SpanFromContext(r.Context()); ok {
+		span.SetTag("attack.type", input.AttackType)
+	}
+
 	if input.ExpectedDamage == nil {
+		logWithTrace(r, "WARN", "attack 缺少 expected_damage 字段，attack_type=%s", input.AttackType)
 		return http.StatusBadRequest
 	}
 
@@ -111,10 +157,12 @@ func validateAttack(input attackRequest) int {
 		damage = 20
 	default:
 		// 空字符串、未知类型及大小写错误统一返回 400。
+		logWithTrace(r, "WARN", "attack 未知 attack_type=%s", input.AttackType)
 		return http.StatusBadRequest
 	}
-	//校验的结果不对
 	if *input.ExpectedDamage != damage {
+		// 业务校验失败：HTTP 不是 5xx，但业务不健康，打 ERROR。
+		logWithTrace(r, "ERROR", "attack 伤害不匹配：type=%s expected=%d actual=%d", input.AttackType, *input.ExpectedDamage, damage)
 		return http.StatusUnprocessableEntity
 	}
 	return http.StatusOK

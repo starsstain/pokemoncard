@@ -1,0 +1,15 @@
+{
+  "name": "[宝可梦] attack 校验失败率过高（业务结果）",
+  "type": "query alert",
+  "query": "sum(last_5m):sum:trace.net.http.request.hits{service:attack,http.status_code:422}.as_rate() / sum(last_5m):sum:trace.net.http.request.hits{service:attack}.as_rate() > 0.1",
+  "message": "{{#is_alert}}🔴 attack 校验失败率已达 {{value}}，超过 10% 阈值。\n注意：HTTP 都是 200/422，不是 5xx，但业务上伤害不匹配率过高，可能前端逻辑或数值被篡改。\n排查：APM → attack，按 span tag attack.type 筛选。{{/is_alert}}\n{{#is_recovery}}✅ attack 校验失败率已恢复正常。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
+  "tags": ["team:bj-xsolla-school-group-2"],
+  "options": {
+    "thresholds": {
+      "critical": 0.1,
+      "warning": 0.05
+    },
+    "notify_no_data": false,
+    "evaluation_delay": 60
+  }
+}
