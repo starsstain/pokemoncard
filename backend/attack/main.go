@@ -8,6 +8,9 @@ import (
 	"mime"
 	"net/http"
 	"time"
+
+	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
 const (
@@ -26,8 +29,21 @@ type attackRequest struct {
 // main 启动独立的 attack 进程；battle 将在后续通过 HTTP 调用此服务。
 func main() {
 	const address = "127.0.0.1:8081"
+	// APM：启动 Datadog 追踪器，trace 数据经本机 Agent（8126 端口）上报。
+	// 显式写 IPv4 地址：Windows 上默认 localhost 先解析为 ::1，Agent 只监听 IPv4。
+	tracer.Start(
+		tracer.WithService("attack"),
+		tracer.WithEnv("school"),
+		tracer.WithAgentAddr("127.0.0.1:8126"),
+	)
+	defer tracer.Stop()
 	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
-	log.Fatal(http.ListenAndServe(address, http.HandlerFunc(handleValidation)))
+	wrapped := ddhttp.WrapHandler(http.HandlerFunc(handleValidation), "attack", validationPath)
+	// log.Fatal 会跳过 defer，须先手动 Stop 刷出缓冲中的 trace 再退出。
+	if err := http.ListenAndServe(address, wrapped); err != nil {
+		tracer.Stop()
+		log.Fatal(err)
+	}
 }
 
 // handleValidation 读取请求并返回状态码；路径、方法和内部错误的响应体也保持为空。

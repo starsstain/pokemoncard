@@ -7,6 +7,9 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 )
 
 const (
@@ -22,17 +25,30 @@ const (
 func main() {
 	const address = "127.0.0.1:8080"
 	const attackURL = "http://127.0.0.1:8081/internal/v1/attack-validations"
+	// APM：启动 Datadog 追踪器，与 attack 串成一条分布式 trace。
+	// 显式写 IPv4 地址：Windows 上默认 localhost 先解析为 ::1，Agent 只监听 IPv4。
+	tracer.Start(
+		tracer.WithService("battle"),
+		tracer.WithEnv("school"),
+		tracer.WithAgentAddr("127.0.0.1:8126"),
+	)
+	defer tracer.Stop()
 	log.Printf("battle 正在监听 http://%s%s", address, validationPath)
-	log.Fatal(http.ListenAndServe(address, newHandler(attackURL)))
+	wrapped := ddhttp.WrapHandler(newHandler(attackURL), "battle", validationPath)
+	// log.Fatal 会跳过 defer，须先手动 Stop 刷出缓冲中的 trace 再退出。
+	if err := http.ListenAndServe(address, wrapped); err != nil {
+		tracer.Stop()
+		log.Fatal(err)
+	}
 }
 
 // newHandler 创建转发处理器；传入 attack 地址，方便测试使用临时服务。
 func newHandler(attackURL string) http.Handler {
-	client := &http.Client{
+	client := ddhttp.WrapClient(&http.Client{
 		Timeout: 500 * time.Millisecond,
 		// 不跟随重定向，保持 attack 返回的状态码，不额外发送请求。
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
 		setCORSHeaders(w)

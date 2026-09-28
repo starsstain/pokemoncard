@@ -1,0 +1,14 @@
+# 日志采集：把 battle / attack 两个服务用 tee 输出的日志文件收集进 Datadog。
+# 前提：服务要用下面的方式启动（Git Bash）：
+#   go run ./attack 2>&1 | tee /c/dd-logs/attack.log
+#   go run ./battle 2>&1 | tee /c/dd-logs/battle.log
+logs:
+  - type: file
+    path: C:/dd-logs/battle.log
+    service: battle
+    source: pokemon-battle
+
+  - type: file
+    path: C:/dd-logs/attack.log
+    service: attack
+    source: pokemon-attack
