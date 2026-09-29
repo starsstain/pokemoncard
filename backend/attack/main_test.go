@@ -7,7 +7,35 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestLegacyFaultIgnored 确认旧请求头不再模拟 500，也不会增加延迟导致 battle 超时。
+func TestLegacyFaultIgnored(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(handleValidation))
+	t.Cleanup(server.Close)
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	for _, fault := range []string{"attack-500", "attack-timeout"} {
+		t.Run(fault, func(t *testing.T) {
+			request, err := http.NewRequest(http.MethodPost, server.URL+validationPath,
+				strings.NewReader(`{"attack_type":"throw","expected_damage":20}`))
+			if err != nil {
+				t.Fatal(err)
+			}
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Pokemon-Debug-Fault", fault)
+			response, err := client.Do(request)
+			if err != nil {
+				t.Fatalf("普通请求不应被旧请求头延迟或中断：%v", err)
+			}
+			defer response.Body.Close()
+			body, err := io.ReadAll(response.Body)
+			if err != nil || response.StatusCode != http.StatusOK || len(body) != 0 {
+				t.Fatalf("期望空的 200，实际 status=%d body=%q err=%v", response.StatusCode, body, err)
+			}
+		})
+	}
+}
 
 // TestAttackValidation 用不同请求检查三种正常攻击、数值不匹配及基本格式错误。
 func TestAttackValidation(t *testing.T) {
@@ -64,6 +92,7 @@ func TestHTTPContract(t *testing.T) {
 		{"缺少 Content-Type", http.MethodPost, validationPath, "", http.StatusBadRequest},
 		{"错误 Content-Type", http.MethodPost, validationPath, "text/plain", http.StatusBadRequest},
 		{"未知路径", http.MethodPost, "/unknown", "application/json", http.StatusNotFound},
+		{"开发接口尚未提供", http.MethodPost, "/internal/v1/dev/500", "", http.StatusNotFound},
 		{"错误方法", http.MethodGet, validationPath, "application/json", http.StatusMethodNotAllowed},
 		{"HEAD 方法", http.MethodHead, validationPath, "application/json", http.StatusMethodNotAllowed},
 	}
