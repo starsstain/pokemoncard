@@ -12,6 +12,50 @@ import (
 	"time"
 )
 
+// TestLegacyFaultIgnored 检查旧故障请求头既不在 battle 生效，也不转发到 attack。
+func TestLegacyFaultIgnored(t *testing.T) {
+	var calls atomic.Int32
+	attack := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("X-Pokemon-Debug-Fault") != "" {
+			t.Error("旧故障指令不应传给 attack")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(attack.Close)
+	handler := newHandler(attack.URL)
+	for _, fault := range []string{"battle-502", "battle-503", "attack-500", "attack-timeout"} {
+		t.Run(fault, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, validationPath,
+				strings.NewReader(`{"attack_type":"throw","expected_damage":20}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Pokemon-Debug-Fault", fault)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			checkResponse(t, response, http.StatusOK)
+		})
+	}
+	if calls.Load() != 4 {
+		t.Fatalf("四次请求都应正常转发，实际调用 %d 次", calls.Load())
+	}
+}
+
+// TestPreflight 普通 JSON 请求的跨域预检仍可完成，且不会调用 attack。
+func TestPreflight(t *testing.T) {
+	request := httptest.NewRequest(http.MethodOptions, validationPath, nil)
+	request.Header.Set("Origin", "http://localhost:5173")
+	request.Header.Set("Access-Control-Request-Method", "POST")
+	request.Header.Set("Access-Control-Request-Headers", "content-type")
+	response := httptest.NewRecorder()
+	newHandler(":invalid").ServeHTTP(response, request)
+	checkResponse(t, response, http.StatusNoContent)
+	if response.Header().Get("Access-Control-Allow-Origin") != "*" ||
+		response.Header().Get("Access-Control-Allow-Methods") != "POST, OPTIONS" ||
+		response.Header().Get("Access-Control-Allow-Headers") != "Content-Type" {
+		t.Fatalf("跨域响应头不符合约定：%v", response.Header())
+	}
+}
+
 // TestForwarding 用真实 HTTP 连接检查请求内容和 attack 各类状态码的透传。
 func TestForwarding(t *testing.T) {
 	for _, code := range []int{200, 400, 422, 500, 502, 503, 504, 307} {
@@ -73,6 +117,7 @@ func TestRouting(t *testing.T) {
 		want         int
 	}{
 		{http.MethodPost, "/unknown", http.StatusNotFound},
+		{http.MethodPost, "/api/v1/dev/500", http.StatusNotFound},
 		{http.MethodGet, validationPath, http.StatusMethodNotAllowed},
 		{http.MethodHead, validationPath, http.StatusMethodNotAllowed},
 	} {
