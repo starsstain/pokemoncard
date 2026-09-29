@@ -12,7 +12,7 @@ import (
 
 // TestLegacyFaultIgnored 确认旧请求头不再模拟 500，也不会增加延迟导致 battle 超时。
 func TestLegacyFaultIgnored(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(handleValidation))
+	server := httptest.NewServer(newHandler(true))
 	t.Cleanup(server.Close)
 	client := &http.Client{Timeout: 500 * time.Millisecond}
 	for _, fault := range []string{"attack-500", "attack-timeout"} {
@@ -92,7 +92,7 @@ func TestHTTPContract(t *testing.T) {
 		{"缺少 Content-Type", http.MethodPost, validationPath, "", http.StatusBadRequest},
 		{"错误 Content-Type", http.MethodPost, validationPath, "text/plain", http.StatusBadRequest},
 		{"未知路径", http.MethodPost, "/unknown", "application/json", http.StatusNotFound},
-		{"开发接口尚未提供", http.MethodPost, "/internal/v1/dev/500", "", http.StatusNotFound},
+		{"开发模式关闭", http.MethodPost, "/internal/v1/dev/500", "", http.StatusNotFound},
 		{"错误方法", http.MethodGet, validationPath, "application/json", http.StatusMethodNotAllowed},
 		{"HEAD 方法", http.MethodHead, validationPath, "application/json", http.StatusMethodNotAllowed},
 	}
@@ -101,7 +101,7 @@ func TestHTTPContract(t *testing.T) {
 			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"attack_type":"throw","expected_damage":20}`))
 			req.Header.Set("Content-Type", tc.contentType)
 			response := httptest.NewRecorder()
-			handleValidation(response, req)
+			newHandler(false).ServeHTTP(response, req)
 			checkResponse(t, response, tc.want)
 			if tc.want == http.StatusMethodNotAllowed && response.Header().Get("Allow") != http.MethodPost {
 				t.Error("405 应通过 Allow 响应头声明 POST")
@@ -125,7 +125,7 @@ func TestInternalErrorHasEmptyBody(t *testing.T) {
 
 // TestHTTPServer 通过真实本地 HTTP 连接确认状态码与空响应体，而不只直接调用函数。
 func TestHTTPServer(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(handleValidation))
+	server := httptest.NewServer(newHandler(false))
 	t.Cleanup(server.Close)
 	response, err := server.Client().Post(server.URL+validationPath, "application/json", strings.NewReader(`{"attack_type":"throw","expected_damage":20}`))
 	if err != nil {
