@@ -25,7 +25,45 @@
   object-fit: fill;
   pointer-events: none;
 }
+.battle-dialog-box {
+  position: absolute;
+  z-index: 5;
+  bottom: -7.5%;
+  left: -4%;
+  width: 108%;
+  height: 31%;
+  transform: none;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  pointer-events: none;
+}
 
+.battle-dialog-text {
+  position: absolute;
+  z-index: 6;
+  right: 8%;
+  bottom: 8%;
+  left: 8%;
+  margin: 0;
+  color: #18262e;
+  font-family: "Courier New", monospace;
+  font-size: clamp(13px, 2.1vw, 23px);
+  font-weight: bold;
+  line-height: 1.45;
+  text-align: left;
+  text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.8);
+  pointer-events: none;
+}
+.battle-dialog-text--typing::after {
+  content: "▮";
+  display: inline-block;
+  margin-left: 0.2em;
+  animation: dialogue-caret 700ms steps(1, end) infinite;
+}
+
+@keyframes dialogue-caret {
+  50% { opacity: 0; }
+}
 .scene-object {
   position: absolute;
   image-rendering: pixelated;
