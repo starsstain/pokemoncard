@@ -15,7 +15,39 @@ import "./BattleScene.css";
 
 export function BattleScene() {
   const animation = useThrowAnimation();
-  const battle = useBattle();
+  const [dialoguePhase, setDialoguePhase] = React.useState("intro");
+  const [dialogueVersion, setDialogueVersion] = React.useState(0);
+  const [dialogueText, setDialogueText] = React.useState("");
+  const [isTyping, setIsTyping] = React.useState(true);
+  const [isBattleActive, setIsBattleActive] = React.useState(false);
+  const dialogueSpeedRef = useRef(1);
+  const battle = useBattle({ isActive: isBattleActive });
+  const dialogueMessage = dialoguePhase === "intro"
+    ? "野生的妙蛙种子出现了！伊布！准备战斗。 (点击继续)"
+    : "天哪！他们已经打起来了，快点击鼠标左键帮助伊布。";
+
+  useEffect(() => {
+    let characterIndex = 0;
+    let timerId;
+    dialogueSpeedRef.current = 1;
+    setDialogueText("");
+    setIsTyping(true);
+
+    const typeNextCharacter = () => {
+      characterIndex += 1;
+      setDialogueText(dialogueMessage.slice(0, characterIndex));
+      if (characterIndex < dialogueMessage.length) {
+        timerId = window.setTimeout(typeNextCharacter, 18 / dialogueSpeedRef.current);
+        return;
+      }
+
+      setIsTyping(false);
+
+    };
+
+    timerId = window.setTimeout(typeNextCharacter, 180);
+    return () => window.clearTimeout(timerId);
+  }, [dialogueMessage, dialoguePhase, dialogueVersion]);
   const [isDevPanelOpen, setIsDevPanelOpen] = React.useState(false);
 
   // 投掷物命中时对敌方宝可梦结算额外伤害
@@ -37,7 +69,17 @@ export function BattleScene() {
 
   const handlePointerDown = (event) => {
     if (event.button !== 0) return;
-    if (someoneFainted) return; // 分出胜负后禁止投掷，点"再来一局"后恢复
+    if (someoneFainted) return;
+    if (dialoguePhase === "intro") {
+      if (isTyping) {
+        dialogueSpeedRef.current = 2;
+        return;
+      }
+      setDialoguePhase("battle");
+      setIsBattleActive(true);
+      return;
+    }
+    if (!isBattleActive) return; // 分出胜负后禁止投掷，点"再来一局"后恢复
     animation.registerTap();
   };
 
@@ -46,16 +88,27 @@ export function BattleScene() {
     void requestDebugStatus(statusCode).catch(() => {});
   };
 
+  const resetBattle = () => {
+    setDialoguePhase("intro");
+    setDialogueVersion((version) => version + 1);
+    setIsBattleActive(false);
+    battle.resetBattle();
+  };
+
   return (
     <section className="battle-frame" aria-label="Pixel-art battle demo">
       <div
         className={`battle-scene ${animation.isAnimating ? "battle-scene--animating" : ""}`}
         onPointerDown={handlePointerDown}
-        onContextMenu={(event) => { event.preventDefault(); battle.resetBattle(); }}
+        onContextMenu={(event) => { event.preventDefault(); resetBattle(); }}
         role="application"
         aria-label={animation.isAnimating ? "Attack animation in progress" : "Click to throw an item"}
       >
         <img className="battle-background" src={battleAssets.backTallGrass} alt="Tall grass battlefield" draggable="false" />
+        <img className="battle-dialog-box" src={battleAssets.dialogBox} alt="" draggable="false" />
+        <p className={`battle-dialog-text ${isTyping ? "battle-dialog-text--typing" : ""}`} aria-live="polite">
+          {dialogueText}
+        </p>
 
         <div className="dev-tools" onPointerDown={(event) => event.stopPropagation()}>
           <button
@@ -138,7 +191,7 @@ export function BattleScene() {
             <p className={`battle-result__text ${battle.enemyHp <= 0 ? "battle-result__text--win" : "battle-result__text--lose"}`}>
               {battle.enemyHp <= 0 ? "成功！" : "失败…"}
             </p>
-            <button className="battle-restart" onClick={battle.resetBattle}>
+            <button className="battle-restart" onClick={resetBattle}>
               再来一局
             </button>
           </div>
