@@ -16,7 +16,8 @@ export const pokemonStats = {
 
 // 自动攻击节奏（毫秒）
 export const battleConfig = {
-  autoAttackInterval: 3000,
+  autoAttackInterval: 2500,
+  attackRetryDelay: 180,
   attackDashDuration: 280,   // 冲到对手身上的时间
   attackReturnDuration: 280, // 碰撞后弹回的时间
   hitFlashDuration: 260,

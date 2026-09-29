@@ -105,6 +105,7 @@ export function BattleScene() {
           side="enemy"
           isHit={animation.enemyIsHit || battle.enemyIsHit}
           isAttacking={battle.enemyAttacking}
+          hitEffect={battleAssets.attacked}
           isFainted={battle.enemyHp <= 0}
           layout={battleLayout.enemyPokemon}
           alt="Bulbasaur"
@@ -117,6 +118,7 @@ export function BattleScene() {
           side="player"
           isHit={battle.playerIsHit}
           isAttacking={battle.playerAttacking}
+          hitEffect={battleAssets.attacked}
           isFainted={battle.playerHp <= 0}
           layout={battleLayout.playerPokemon}
           alt="Eevee"
