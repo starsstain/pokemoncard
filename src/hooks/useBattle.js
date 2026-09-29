@@ -3,7 +3,7 @@ import { battleConfig, pokemonStats } from "../config/pokemonStats";
 import { getRandomInteger } from "../utils/random";
 
 // 战斗状态：双方生命值、自动攻击与受击反馈。
-export function useBattle({ onEnemyHit } = {}) {
+export function useBattle({ onEnemyHit, isActive = true } = {}) {
   const [battle, setBattle] = useState({
     playerHp: pokemonStats.player.maxHp,
     enemyHp: pokemonStats.enemy.maxHp,
@@ -66,6 +66,8 @@ export function useBattle({ onEnemyHit } = {}) {
 
   // 双方自动攻击循环：任一方倒下后停止
   useEffect(() => {
+    if (!isActive) return undefined;
+
     let playerTimer = window.setTimeout(function schedulePlayerAttack() {
       const isBattleActive = battleRef.current.playerHp > 0 && battleRef.current.enemyHp > 0;
       const isAttackInProgress = battleRef.current.playerAttacking || battleRef.current.enemyAttacking;
@@ -98,7 +100,7 @@ export function useBattle({ onEnemyHit } = {}) {
       window.clearTimeout(playerTimer);
       window.clearTimeout(enemyTimer);
     };
-  }, [runAttack]);
+  }, [isActive, runAttack]);
 
   // 手动伤害入口（投掷物命中时调用）
   const dealDamage = useCallback((defender, amount) => {
