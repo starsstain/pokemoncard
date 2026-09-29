@@ -23,7 +23,7 @@ func TestLegacyFaultIgnored(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	t.Cleanup(attack.Close)
-	handler := newHandler(attack.URL)
+	handler := newHandler(attack.URL, true)
 	for _, fault := range []string{"battle-502", "battle-503", "attack-500", "attack-timeout"} {
 		t.Run(fault, func(t *testing.T) {
 			request := httptest.NewRequest(http.MethodPost, validationPath,
@@ -47,7 +47,7 @@ func TestPreflight(t *testing.T) {
 	request.Header.Set("Access-Control-Request-Method", "POST")
 	request.Header.Set("Access-Control-Request-Headers", "content-type")
 	response := httptest.NewRecorder()
-	newHandler(":invalid").ServeHTTP(response, request)
+	newHandler(":invalid", false).ServeHTTP(response, request)
 	checkResponse(t, response, http.StatusNoContent)
 	if response.Header().Get("Access-Control-Allow-Origin") != "*" ||
 		response.Header().Get("Access-Control-Allow-Methods") != "POST, OPTIONS" ||
@@ -77,7 +77,7 @@ func TestForwarding(t *testing.T) {
 				_, _ = w.Write([]byte("这段上游响应体不应转发给前端"))
 			}))
 			defer attack.Close()
-			battle := httptest.NewServer(newHandler(attack.URL + "/internal/v1/attack-validations"))
+			battle := httptest.NewServer(newHandler(attack.URL+"/internal/v1/attack-validations", false))
 			defer battle.Close()
 			response, err := battle.Client().Post(battle.URL+validationPath, contentType, strings.NewReader(body))
 			if err != nil {
@@ -106,7 +106,7 @@ func TestInvalidInputStillForwarded(t *testing.T) {
 	}))
 	defer attack.Close()
 	response := httptest.NewRecorder()
-	newHandler(attack.URL).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, strings.NewReader("broken json")))
+	newHandler(attack.URL, false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, strings.NewReader("broken json")))
 	checkResponse(t, response, http.StatusUnprocessableEntity)
 }
 
@@ -123,7 +123,7 @@ func TestRouting(t *testing.T) {
 	} {
 		response := httptest.NewRecorder()
 		// 无效上游地址可验证路由错误不会继续进入转发逻辑。
-		newHandler(":invalid").ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
+		newHandler(":invalid", false).ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
 		checkResponse(t, response, tc.want)
 		if tc.want == http.StatusMethodNotAllowed && response.Header().Get("Allow") != http.MethodPost {
 			t.Error("405 应声明 Allow: POST")
@@ -141,7 +141,7 @@ func TestTimeout(t *testing.T) {
 	defer attack.Close()
 	started := time.Now()
 	response := httptest.NewRecorder()
-	newHandler(attack.URL).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler(attack.URL, false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusGatewayTimeout)
 	if elapsed := time.Since(started); elapsed < 400*time.Millisecond || elapsed > 2*time.Second {
 		t.Errorf("500ms 超时耗时异常：%s", elapsed)
@@ -156,7 +156,7 @@ func TestUnavailable(t *testing.T) {
 	attack := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	attack.Close()
 	response := httptest.NewRecorder()
-	newHandler(attack.URL).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler(attack.URL, false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusServiceUnavailable)
 }
 
@@ -179,14 +179,14 @@ func TestMalformedResponse(t *testing.T) {
 		_, _ = io.WriteString(connection, "not-an-http-response\r\n\r\n")
 	}()
 	response := httptest.NewRecorder()
-	newHandler("http://"+listener.Addr().String()).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler("http://"+listener.Addr().String(), false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusBadGateway)
 }
 
 // TestInternalError 验证 battle 自身无法创建转发请求时返回空的 500。
 func TestInternalError(t *testing.T) {
 	response := httptest.NewRecorder()
-	newHandler(":invalid").ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler(":invalid", false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusInternalServerError)
 }
 
