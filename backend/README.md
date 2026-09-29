@@ -20,7 +20,7 @@ battle 监听 `127.0.0.1:8080`，调用本机 8081 上的 attack。各终端按 
 
 ### 开发模式配置
 
-**当前版本完成配置读取和旧故障入口清理；独立 dev 接口将在后续版本提供。即使配置为 dev，本版本的开发路径仍返回空的 404。**
+**当前版本已提供 attack 内部开发接口；battle 的 `/api/v1/dev/{status}` 尚未实现，前端测试按钮暂不能通过新路径联调。**
 
 首次在 `backend` 目录复制配置示例（已有 `.env` 时不要覆盖）：
 
@@ -105,7 +105,27 @@ battle 不解析 JSON、不校验伤害、不自动重试，也不跟随上游�
 '{"attack_type":"fire","expected_damage":20}' | curl.exe -i -X POST 'http://127.0.0.1:8080/api/v1/attack-validations' -H 'Content-Type: application/json' --data-binary '@-'
 ```
 
-停止 attack、保持 battle 运行后，重复上述请求应返回 503。恢复 attack 后可以继续请求。超时、损坏响应及状态码透传由自动化测试使用临时上游验证，正式服务不提供故障模拟接口。
+停止 attack、保持 battle 运行后，重复上述请求应返回 503。恢复 attack 后可以继续请求。正常接口的超时、损坏响应及状态码透传由自动化测试使用临时上游验证。
+
+### attack 内部开发接口
+
+在 `backend/.env` 设置 `APP_ENV=dev`，确认终端无冲突的 `APP_ENV`，重启 attack。启动日志显示 `attack 开发接口开启=true`。
+
+| 接口 | 响应 |
+| --- | --- |
+| POST /internal/v1/dev/500 | 500，响应体为空 |
+| POST /internal/v1/dev/timeout | 等待 600ms 后返回 200，响应体为空；调用方取消时提前结束等待 |
+
+无需请求体或 Content-Type。以下命令供后端直接验证；前端之后仍通过 battle 调用：
+
+```powershell
+curl.exe -i -X POST 'http://127.0.0.1:8081/internal/v1/dev/500'
+curl.exe -i -X POST 'http://127.0.0.1:8081/internal/v1/dev/timeout'
+```
+
+开发模式关闭时，两条路径均返回空的 404；开启时，错误方法返回空的 405 和 `Allow: POST`，未知路径及带尾部斜线的路径返回空的 404。
+
+直接访问延迟接口时，等待完成后得到的是 200；后续 battle 使用 500ms 调用预算，超时后才会向前端返回 504。本次不增加 battle 开发路由。开发接口不修改血量或对局状态。
 
 ## 文件用途
 
@@ -116,7 +136,9 @@ battle 不解析 JSON、不校验伤害、不自动重试，也不跟随上游�
 - `internal/config/config_test.go`：验证配置读取、优先级及错误处理。
 - `attack/main.go`：启动服务、解析请求、判断固定伤害并返回状态码。
 - `attack/main_test.go`：验证状态码、空响应体和实际 HTTP 调用。
+- `attack/dev.go`：模拟内部 500 和可取消的延迟响应。
+- `attack/dev_test.go`：验证开发接口路由、开关、延迟和请求取消。
 - `battle/main.go`：转发请求、透传状态码并处理上游调用失败。
 - `battle/main_test.go`：验证原样转发、不重试、超时和异常状态码。
 
-固定伤害直接写在代码中。不使用规则文件，不保存对局、血量或攻击历史，不提供故障模拟接口。
+固定伤害直接写在代码中。不使用规则文件，不保存对局、血量或攻击历史。故障模拟仅通过开发模式下的专用接口提供。
