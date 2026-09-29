@@ -66,22 +66,36 @@ export function useBattle({ onEnemyHit } = {}) {
 
   // 双方自动攻击循环：任一方倒下后停止
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (battleRef.current.playerHp <= 0 || battleRef.current.enemyHp <= 0) return;
-      if (battleRef.current.playerAttacking || battleRef.current.enemyAttacking) return;
-      runAttack("player", "enemy");
+    let playerTimer = window.setTimeout(function schedulePlayerAttack() {
+      const isBattleActive = battleRef.current.playerHp > 0 && battleRef.current.enemyHp > 0;
+      const isAttackInProgress = battleRef.current.playerAttacking || battleRef.current.enemyAttacking;
+
+      if (isBattleActive && !isAttackInProgress) {
+        runAttack("player", "enemy");
+      }
+
+      const nextDelay = isBattleActive && isAttackInProgress
+        ? battleConfig.attackRetryDelay
+        : battleConfig.autoAttackInterval;
+      playerTimer = window.setTimeout(schedulePlayerAttack, nextDelay);
     }, battleConfig.autoAttackInterval);
 
     let enemyTimer = window.setTimeout(function scheduleEnemyAttack() {
-      if (battleRef.current.playerHp > 0 && battleRef.current.enemyHp > 0
-        && !battleRef.current.playerAttacking && !battleRef.current.enemyAttacking) {
+      const isBattleActive = battleRef.current.playerHp > 0 && battleRef.current.enemyHp > 0;
+      const isAttackInProgress = battleRef.current.playerAttacking || battleRef.current.enemyAttacking;
+
+      if (isBattleActive && !isAttackInProgress) {
         runAttack("enemy", "player");
       }
-      enemyTimer = window.setTimeout(scheduleEnemyAttack, battleConfig.autoAttackInterval);
+
+      const nextDelay = isBattleActive && isAttackInProgress
+        ? battleConfig.attackRetryDelay
+        : battleConfig.autoAttackInterval;
+      enemyTimer = window.setTimeout(scheduleEnemyAttack, nextDelay);
     }, battleConfig.autoAttackInterval / 2);
 
     return () => {
-      window.clearInterval(timer);
+      window.clearTimeout(playerTimer);
       window.clearTimeout(enemyTimer);
     };
   }, [runAttack]);
