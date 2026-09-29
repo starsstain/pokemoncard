@@ -100,7 +100,6 @@ export function BattleScene() {
       <div
         className={`battle-scene ${animation.isAnimating ? "battle-scene--animating" : ""}`}
         onPointerDown={handlePointerDown}
-        onContextMenu={(event) => { event.preventDefault(); resetBattle(); }}
         role="application"
         aria-label={animation.isAnimating ? "Attack animation in progress" : "Click to throw an item"}
       >
