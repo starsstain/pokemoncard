@@ -7,15 +7,11 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"time"
+
+	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/config"
 )
 
-const (
-	validationPath     = "/internal/v1/attack-validations"
-	debugFaultHeader   = "X-Pokemon-Debug-Fault"
-	faultAttack500     = "attack-500"
-	faultAttackTimeout = "attack-timeout"
-)
+const validationPath = "/internal/v1/attack-validations"
 
 // attackRequest 对应请求 JSON；指针用于区分缺失或 null 与明确提交的整数 0。
 type attackRequest struct {
@@ -25,6 +21,12 @@ type attackRequest struct {
 
 // main 启动独立的 attack 进程；battle 将在后续通过 HTTP 调用此服务。
 func main() {
+	//取.env文件
+	settings, err := config.Load(".env")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("attack 开发模式配置=%t；本版本尚未注册开发接口", settings.DevMode)
 	const address = "127.0.0.1:8081"
 	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
 	log.Fatal(http.ListenAndServe(address, http.HandlerFunc(handleValidation)))
@@ -51,13 +53,6 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
 		status = http.StatusMethodNotAllowed
 		return
-	}
-	if r.Header.Get(debugFaultHeader) == faultAttack500 {
-		status = http.StatusInternalServerError
-		return
-	}
-	if r.Header.Get(debugFaultHeader) == faultAttackTimeout {
-		time.Sleep(600 * time.Millisecond)
 	}
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || contentType != "application/json" {
