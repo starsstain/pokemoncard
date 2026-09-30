@@ -19,19 +19,26 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("battle 开发模式配置=%t；本版本尚未注册开发接口", settings.DevMode)
+	log.Printf("battle 开发接口开启=%t", settings.DevMode)
 	const address = "127.0.0.1:8080"
 	const attackURL = "http://127.0.0.1:8081/internal/v1/attack-validations"
 	log.Printf("battle 正在监听 http://%s%s", address, validationPath)
-	log.Fatal(http.ListenAndServe(address, newHandler(attackURL)))
+	log.Fatal(http.ListenAndServe(address, newHandler(attackURL, settings.DevMode)))
 }
 
 // newHandler 创建转发处理器；传入 attack 地址，方便测试使用临时服务。
-func newHandler(attackURL string) http.Handler {
+func newHandler(attackURL string, devMode bool) http.Handler {
 	client := &http.Client{
 		Timeout: 500 * time.Millisecond,
 		// 不跟随重定向，保持 attack 返回的状态码，不额外发送请求。
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	// 所有路由共用方法检查、日志、空响应体和同一个 500ms HTTP 客户端。
+	routes := map[string]func(*http.Request) int{
+		validationPath: func(r *http.Request) int { return forwardValidation(client, attackURL, r) },
+	}
+	if devMode {
+		registerDevRoutes(routes, client, attackURL)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
@@ -44,7 +51,8 @@ func newHandler(attackURL string) http.Handler {
 			w.WriteHeader(status)
 			log.Printf("battle method=%s path=%s status=%d", r.Method, r.URL.Path, status)
 		}()
-		if r.URL.Path != validationPath {
+		handler, exists := routes[r.URL.Path]
+		if !exists {
 			status = http.StatusNotFound
 			return
 		}
@@ -58,25 +66,32 @@ func newHandler(attackURL string) http.Handler {
 			return
 		}
 
-		// 原样转发请求体，不解析 JSON，也不重复检查攻击规则。
-		request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, attackURL, r.Body)
-		if err != nil {
-			log.Printf("battle 创建转发请求失败：%v", err)
-			return
-		}
-		request.ContentLength = r.ContentLength
-		request.Header["Content-Type"] = r.Header.Values("Content-Type")
-		// 每次只调用一次，不设置可重放的请求体，也不自动重试。
-		response, err := client.Do(request)
-		if err != nil {
-			status = forwardingStatus(err)
-			log.Printf("battle 调用 attack 失败：%v", err)
-			return
-		}
-		defer response.Body.Close()
-		// 收到合法 HTTP 响应后原样返回状态码；不读取或转发响应体。
-		status = response.StatusCode
+		status = handler(r)
 	})
+}
+
+// forwardValidation 原样转发正常攻击的请求体，不解析 JSON 或重复校验伤害。
+func forwardValidation(client *http.Client, attackURL string, r *http.Request) int {
+	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, attackURL, r.Body)
+	if err != nil {
+		log.Printf("battle 创建转发请求失败：%v", err)
+		return http.StatusInternalServerError
+	}
+	request.ContentLength = r.ContentLength
+	request.Header["Content-Type"] = r.Header.Values("Content-Type")
+	return forwardRequest(client, request)
+}
+
+// forwardRequest 供正常和开发请求共用：不重试、不跟随重定向，只保留实际状态码。
+func forwardRequest(client *http.Client, request *http.Request) int {
+	request.GetBody = nil // 禁用请求体重放，开发请求也不自动重试。
+	response, err := client.Do(request)
+	if err != nil {
+		log.Printf("battle 调用 attack 失败：%v", err)
+		return forwardingStatus(err)
+	}
+	defer response.Body.Close()
+	return response.StatusCode
 }
 
 // forwardingStatus 区分调用超时、连接失败及无法取得合法 HTTP 响应的情况。
