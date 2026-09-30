@@ -26,10 +26,30 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	log.Printf("attack 开发模式配置=%t；本版本尚未注册开发接口", settings.DevMode)
+	log.Printf("attack 开发接口开启=%t", settings.DevMode)
 	const address = "127.0.0.1:8081"
 	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
-	log.Fatal(http.ListenAndServe(address, http.HandlerFunc(handleValidation)))
+	log.Fatal(http.ListenAndServe(address, newHandler(settings.DevMode)))
+}
+
+// newHandler 在启动时建立路由表；非开发模式不注册开发路径。
+func newHandler(devMode bool) http.Handler {
+	routes := map[string]http.HandlerFunc{validationPath: handleValidation}
+	//如果是开发者模式，加两个模拟故障的路由
+	if devMode {
+		routes[dev500Path] = handleDev
+		routes[devTimeoutPath] = handleDev
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//查找当前请求路径在不在路由表里
+		if handler, exists := routes[r.URL.Path]; exists {
+			handler(w, r)
+			return
+		}
+		// 未注册路径直接返回空的 404，不使用会附带文字的默认错误页。
+		w.WriteHeader(http.StatusNotFound)
+		log.Printf("attack method=%s path=%s status=%d", r.Method, r.URL.Path, http.StatusNotFound)
+	})
 }
 
 // handleValidation 读取请求并返回状态码；路径、方法和内部错误的响应体也保持为空。
