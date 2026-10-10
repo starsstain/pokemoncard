@@ -3,7 +3,7 @@ import { DEBUG } from "../../config/debug";
 import { battleLayout } from "../../config/battleLayout";
 import { pokemonStats } from "../../config/pokemonStats";
 import { useThrowAnimation } from "../../hooks/useThrowAnimation";
-import { useBattle } from "../../hooks/useBattle";
+import { defaultDamages, useBattle } from "../../hooks/useBattle";
 import { battleAssets } from "../../utils/assetLoader";
 import { requestDebugStatus } from "../../services/attackValidation";
 import { GrassPlatform } from "../GrassPlatform/GrassPlatform";
@@ -70,13 +70,15 @@ export function BattleScene() {
     return () => window.clearTimeout(timerId);
   }, [dialogueMessage, dialoguePhase, dialogueVersion]);
   const [isDevPanelOpen, setIsDevPanelOpen] = React.useState(false);
+  const [devDamageType, setDevDamageType] = React.useState("enemy_collision");
+  const [devDamage, setDevDamage] = React.useState("");
 
   // 投掷物命中时对敌方宝可梦结算伤害（前端独立扣血，校验按抽样异步上报）
   const submitDamageRef = useRef(battle.submitDamage);
   submitDamageRef.current = battle.submitDamage;
   useEffect(() => {
     if (!animation.enemyIsHit) return;
-    submitDamageRef.current("enemy", "throw", pokemonStats.player.throwBonus);
+    submitDamageRef.current("enemy", "throw");
   }, [animation.enemyIsHit]);
 
   const someoneFainted = battle.playerHp <= 0 || battle.enemyHp <= 0;
@@ -120,6 +122,19 @@ export function BattleScene() {
       return;
     }
     void responseStatus.then((status) => battle.simulateStatus(status));
+  };
+
+  // dev：修改某类攻击的名义伤害（扣血与上报同值），用于演练篡改检测；不允许负数，0 可以
+  const handleSetDamage = () => {
+    if (devDamage === "") return;
+    const value = Number(devDamage);
+    if (!Number.isFinite(value) || value < 0) return;
+    battle.setDamage(devDamageType, Math.round(value));
+  };
+
+  const handleResetDamage = () => {
+    setDevDamage("");
+    battle.resetDamages();
   };
 
   const resetBattle = () => {
@@ -170,6 +185,31 @@ export function BattleScene() {
                     {statusCode}
                   </button>
                 ))}
+
+                <span className="dev-tools__label">攻击力：</span>
+                <select
+                  className="dev-tools__field"
+                  value={devDamageType}
+                  onChange={(event) => setDevDamageType(event.target.value)}
+                >
+                  <option value="enemy_collision">我方撞击</option>
+                  <option value="collision">敌方撞击</option>
+                  <option value="throw">丢球</option>
+                </select>
+                <input
+                  className="dev-tools__field dev-tools__field--input"
+                  type="number"
+                  min={0}
+                  value={devDamage}
+                  placeholder={String(defaultDamages[devDamageType])}
+                  onChange={(event) => setDevDamage(event.target.value)}
+                />
+                <button className="dev-tools__status" type="button" onClick={handleSetDamage}>
+                  设置
+                </button>
+                <button className="dev-tools__status" type="button" onClick={handleResetDamage}>
+                  还原
+                </button>
               </div>
             )}
           </div>
@@ -180,14 +220,14 @@ export function BattleScene() {
           name={pokemonStats.enemy.name}
           hp={battle.enemyHp}
           maxHp={pokemonStats.enemy.maxHp}
-          attack={pokemonStats.enemy.attack}
+          attack={battle.damages.collision}
           side="enemy"
         />
         <HealthBar
           name={pokemonStats.player.name}
           hp={battle.playerHp}
           maxHp={pokemonStats.player.maxHp}
-          attack={pokemonStats.player.attack}
+          attack={battle.damages.enemy_collision}
           side="player"
         />
 
