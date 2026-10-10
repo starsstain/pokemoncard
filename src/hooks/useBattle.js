@@ -11,6 +11,10 @@ const attackReports = {
 // 抽样上报比例：同一种攻击每 5 次传 1 次，降低服务端压力
 const reportEvery = 5;
 
+// dev 演练参数：被篡改的一击先真实生效，隔一段“校验耗时”才收到判决，还原真实链路的先后节奏
+const tamperRehearsedDamage = 999;
+const tamperVerdictDelay = 900;
+
 // 战斗状态：血量由前端独立结算，不等后端；
 // 校验请求按抽样异步发出：400/422 判定“数据被篡改”（必须重开），5xx/网络故障仅提示。
 export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {}) {
@@ -47,20 +51,29 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     timeoutRef.current = window.setTimeout(resolve, duration);
   }), []);
 
-  // 异步校验结果：200 静默；400/422 说明上报数据对不上约定，判定篡改；
-  // 5xx 与网络失败（status 为 null）是服务自身或通信问题，不算篡改证据。
-  const checkReport = useCallback(async (attackType, damage) => {
-    const round = roundRef.current;
-    const status = await validateAttack(attackType, damage);
-    if (!mountedRef.current || round !== roundRef.current) return; // 期间重开游戏，旧结果不影响新一局
-
+  // 校验状态的统一反应：200 静默；422 说明上报数值对不上约定，判定篡改；
+  // 400 是请求格式问题（多为前端 bug），5xx 与网络失败（status 为 null）是服务或通信问题，均仅提示。
+  const reactToStatus = useCallback((status) => {
     if (status === 200) return;
-    if (status === 400 || status === 422) {
+    if (status === 422) {
       updateBattle({ isTampered: true }); // 本局数据不可信，必须重开
       return;
     }
     onServiceDegraded?.(status);
   }, [onServiceDegraded, updateBattle]);
+
+  // 真实校验：抽样发出的请求回来后走统一反应
+  const checkReport = useCallback(async (attackType, damage) => {
+    const round = roundRef.current;
+    const status = await validateAttack(attackType, damage);
+    if (!mountedRef.current || round !== roundRef.current) return; // 期间重开游戏，旧结果不影响新一局
+    reactToStatus(status);
+  }, [reactToStatus]);
+
+  // dev 面板模拟一条校验结果，与真实校验走同一套反应
+  const simulateStatus = useCallback((status) => {
+    reactToStatus(status);
+  }, [reactToStatus]);
 
   // 抽样上报：同一种攻击每 5 次传 1 次
   const reportSampled = useCallback((attackType, damage) => {
@@ -147,6 +160,20 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     return hp;
   }, [updateBattle]);
 
+  // dev 面板演练完整作弊链路：被篡改的一击先真实生效（清空血量、先看到“成功”），
+  // 隔一段校验耗时再收到判决，避免弹窗凭空出现。
+  const stageTamperedAttack = useCallback((statusPromise) => {
+    if (battleRef.current.isTampered) return;
+    const round = roundRef.current;
+    dealDamage("enemy", tamperRehearsedDamage);
+    const verdictDelay = new Promise((resolve) => window.setTimeout(resolve, tamperVerdictDelay));
+    void Promise.all([Promise.resolve(statusPromise).catch(() => null), verdictDelay])
+      .then(([status]) => {
+        if (!mountedRef.current || round !== roundRef.current) return; // 期间重开，判决不再生效
+        reactToStatus(status);
+      });
+  }, [dealDamage, reactToStatus]);
+
   // 手动伤害入口（投掷物命中时调用）：立即扣血，再按抽样决定是否上报
   const submitDamage = useCallback((defender, attackType, damage) => {
     if (battleRef.current.isTampered) return;
@@ -168,5 +195,5 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     });
   }, [updateBattle]);
 
-  return { ...battle, submitDamage, resetBattle, wait };
+  return { ...battle, submitDamage, resetBattle, simulateStatus, stageTamperedAttack, wait };
 }
