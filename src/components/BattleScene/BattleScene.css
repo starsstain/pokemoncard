@@ -223,6 +223,7 @@
 
 .battle-result__text--win { color: #4cd964; }
 .battle-result__text--lose { color: #ff3b30; }
+.battle-result__text--tampered { color: #ff9500; }
 
 .battle-restart {
   position: static;
@@ -238,6 +239,23 @@
 }
 
 .battle-restart:hover { background: #35617c; }
+
+/* 校验未通过/服务故障时的短暂提示 */
+.battle-toast {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  padding: 6px 12px;
+  color: #f8f8d8;
+  font-family: "Courier New", monospace;
+  font-size: 14px;
+  font-weight: bold;
+  background: rgba(10, 24, 32, 0.92);
+  border: 2px solid #0a1820;
+  pointer-events: none;
+}
 
 @media (max-width: 520px) {
   .app-shell { padding: 14px; }
