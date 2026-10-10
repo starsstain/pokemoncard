@@ -199,6 +199,19 @@
   font-size: 12px;
 }
 
+.dev-tools__field {
+  padding: 4px 6px;
+  color: #f8f8d8;
+  background: #244052;
+  border: 2px solid #0a1820;
+  font: inherit;
+  font-weight: bold;
+}
+
+.dev-tools__field--input {
+  width: 64px;
+}
+
 
 .battle-result {
   position: absolute;
