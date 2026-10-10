@@ -2,14 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { battleConfig, pokemonStats } from "../config/pokemonStats";
 import { validateAttack } from "../services/attackValidation";
 
-// 攻击上报映射：名义伤害取固定值，须与后端约定一致（enemy_collision=7 / collision=18 / throw=20）
-const attackReports = {
-  player: { attackType: "enemy_collision", damage: pokemonStats.player.attack },
-  enemy: { attackType: "collision", damage: pokemonStats.enemy.attack },
+// 各攻击类型的名义伤害默认值，须与后端约定一致（enemy_collision=7 / collision=18 / throw=20）；
+// dev 面板可在运行时覆盖，用于演练篡改检测。
+export const defaultDamages = {
+  enemy_collision: pokemonStats.player.attack,
+  collision: pokemonStats.enemy.attack,
+  throw: pokemonStats.player.throwBonus,
 };
 
-// 抽样上报比例：同一种攻击每 5 次传 1 次，降低服务端压力
-const reportEvery = 5;
+// 攻击方到 attack_type 的映射
+const attackTypes = {
+  player: "enemy_collision",
+  enemy: "collision",
+};
+
+// 抽样上报比例：三种攻击各自计数，每 3 次传 1 次，降低服务端压力
+const reportEvery = 3;
 
 // dev 演练参数：被篡改的一击先真实生效，隔一段“校验耗时”才收到判决，还原真实链路的先后节奏
 const tamperRehearsedDamage = 999;
@@ -32,7 +40,9 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
   const mountedRef = useRef(true);
   const timeoutRef = useRef(null);
   const roundRef = useRef(0); // 局数：重开后递增，使在途校验结果作废
-  const reportCountersRef = useRef({}); // 各攻击类型的累计次数，用于 1/5 抽样
+  const reportCountersRef = useRef({}); // 各攻击类型的累计次数，各自每 3 次上报 1 次
+  const [damages, setDamagesState] = useState({ ...defaultDamages }); // 当前生效的名义伤害（dev 可覆盖，血条 ATK 同步显示）
+  const damageRef = useRef(damages);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -75,7 +85,19 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     reactToStatus(status);
   }, [reactToStatus]);
 
-  // 抽样上报：同一种攻击每 5 次传 1 次
+  // dev 面板：覆盖/还原某类攻击的名义伤害（扣血、上报与血条 ATK 显示同步使用该值）
+  const setDamage = useCallback((attackType, value) => {
+    const next = { ...damageRef.current, [attackType]: value };
+    damageRef.current = next;
+    setDamagesState(next);
+  }, []);
+
+  const resetDamages = useCallback(() => {
+    damageRef.current = { ...defaultDamages };
+    setDamagesState(damageRef.current);
+  }, []);
+
+  // 抽样上报：三种攻击各自计数，每累计满 3 次就上报“当前这次”
   const reportSampled = useCallback((attackType, damage) => {
     const count = (reportCountersRef.current[attackType] ?? 0) + 1;
     reportCountersRef.current[attackType] = count;
@@ -93,14 +115,15 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     await wait(battleConfig.attackDashDuration);
     if (!mountedRef.current || round !== roundRef.current || battleRef.current.isTampered) return;
 
-    const report = attackReports[attacker];
+    const attackType = attackTypes[attacker];
+    const damage = damageRef.current[attackType];
     updateBattle({
       [defenderKey]: true,
       [`${defender}Hp`]: Math.max(0, battleRef.current[`${defender}Hp`] - report.damage),
     });
 
     if (defender === "enemy") onEnemyHit?.();
-    reportSampled(report.attackType, report.damage);
+    reportSampled(attackType, damage);
 
     // 碰撞后停顿一下再弹回，让撞击感更明显
     await wait(battleConfig.attackReturnDuration);
@@ -175,8 +198,9 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
   }, [dealDamage, reactToStatus]);
 
   // 手动伤害入口（投掷物命中时调用）：立即扣血，再按抽样决定是否上报
-  const submitDamage = useCallback((defender, attackType, damage) => {
+  const submitDamage = useCallback((defender, attackType) => {
     if (battleRef.current.isTampered) return;
+    const damage = damageRef.current[attackType];
     dealDamage(defender, damage);
     reportSampled(attackType, damage);
   }, [dealDamage, reportSampled]);
@@ -195,5 +219,5 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     });
   }, [updateBattle]);
 
-  return { ...battle, submitDamage, resetBattle, simulateStatus, stageTamperedAttack, wait };
+  return { ...battle, damages, submitDamage, resetBattle, simulateStatus, stageTamperedAttack, setDamage, resetDamages, wait };
 }
