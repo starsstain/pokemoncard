@@ -13,6 +13,9 @@ import { Projectile } from "../Projectile/Projectile";
 import { Trainer } from "../Trainer/Trainer";
 import "./BattleScene.css";
 
+// dev 面板仅用于联调：npm run dev（开发者模式）下显示，npm run prod（生产模式）构建的产物里不包含
+const isDevToolsAvailable = import.meta.env.DEV;
+
 export function BattleScene() {
   const animation = useThrowAnimation();
   const [dialoguePhase, setDialoguePhase] = React.useState("intro");
@@ -21,7 +24,24 @@ export function BattleScene() {
   const [isTyping, setIsTyping] = React.useState(true);
   const [isBattleActive, setIsBattleActive] = React.useState(false);
   const dialogueSpeedRef = useRef(1);
-  const battle = useBattle({ isActive: isBattleActive });
+  const [serviceMessage, setServiceMessage] = React.useState(null);
+  const serviceMessageTimerRef = useRef(null);
+  useEffect(() => () => window.clearTimeout(serviceMessageTimerRef.current), []);
+
+  // 服务自身或通信故障（5xx、无状态码）只短暂提示，不判定篡改、不影响对局
+  const handleServiceDegraded = React.useCallback((status) => {
+    const messageByStatus = {
+      500: "服务异常，不影响对局",
+      502: "网关错误，不影响对局",
+      503: "服务暂不可用，不影响对局",
+      504: "请求超时，不影响对局",
+    };
+    setServiceMessage(messageByStatus[status] ?? "网络异常，不影响对局");
+    window.clearTimeout(serviceMessageTimerRef.current);
+    serviceMessageTimerRef.current = window.setTimeout(() => setServiceMessage(null), 2500);
+  }, []);
+
+  const battle = useBattle({ isActive: isBattleActive, onServiceDegraded: handleServiceDegraded });
   const dialogueMessage = dialoguePhase === "intro"
     ? "野生的妙蛙种子出现了！伊布！准备战斗。 (点击继续)"
     : "天哪！他们已经打起来了，快点击鼠标左键帮助伊布。";
@@ -50,26 +70,32 @@ export function BattleScene() {
   }, [dialogueMessage, dialoguePhase, dialogueVersion]);
   const [isDevPanelOpen, setIsDevPanelOpen] = React.useState(false);
 
-  // 投掷物命中时对敌方宝可梦结算额外伤害
-  const dealDamageRef = useRef(battle.dealDamage);
-  dealDamageRef.current = battle.dealDamage;
+  // 投掷物命中时对敌方宝可梦结算伤害（前端独立扣血，校验按抽样异步上报）
+  const submitDamageRef = useRef(battle.submitDamage);
+  submitDamageRef.current = battle.submitDamage;
   useEffect(() => {
     if (!animation.enemyIsHit) return;
-    dealDamageRef.current("enemy", pokemonStats.player.throwBonus);
+    submitDamageRef.current("enemy", "throw", pokemonStats.player.throwBonus);
   }, [animation.enemyIsHit]);
 
   const someoneFainted = battle.playerHp <= 0 || battle.enemyHp <= 0;
+  const isGameOver = someoneFainted || battle.isTampered;
+
+  // 判定篡改后立即终止对局：停自动攻击、禁投掷，只能重开
+  useEffect(() => {
+    if (battle.isTampered) setIsBattleActive(false);
+  }, [battle.isTampered]);
 
   // 结算页出现后立即冻结：中断在途的投掷动画、清掉排队中的补扔
   const cancelAnimationRef = useRef(animation.cancelAnimation);
   cancelAnimationRef.current = animation.cancelAnimation;
   useEffect(() => {
-    if (someoneFainted) cancelAnimationRef.current();
-  }, [someoneFainted]);
+    if (isGameOver) cancelAnimationRef.current();
+  }, [isGameOver]);
 
   const handlePointerDown = (event) => {
     if (event.button !== 0) return;
-    if (someoneFainted) return;
+    if (isGameOver) return;
     if (dialoguePhase === "intro") {
       if (isTyping) {
         dialogueSpeedRef.current = 2;
@@ -109,31 +135,37 @@ export function BattleScene() {
           {dialogueText}
         </p>
 
-        <div className="dev-tools" onPointerDown={(event) => event.stopPropagation()}>
-          <button
-            className="dev-tools__toggle"
-            type="button"
-            onClick={() => setIsDevPanelOpen((isOpen) => !isOpen)}
-          >
-            dev
-          </button>
+        {serviceMessage && (
+          <div className="battle-toast" role="status">{serviceMessage}</div>
+        )}
 
-          {isDevPanelOpen && (
-            <div className="dev-tools__panel">
-              <span className="dev-tools__label">返回状态码：</span>
-              {[200, 400, 422, 500, 502, 503, 504].map((statusCode) => (
-                <button
-                  key={statusCode}
-                  className="dev-tools__status"
-                  type="button"
-                  onClick={() => handleDebugStatusClick(statusCode)}
-                >
-                  {statusCode}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        {isDevToolsAvailable && (
+          <div className="dev-tools" onPointerDown={(event) => event.stopPropagation()}>
+            <button
+              className="dev-tools__toggle"
+              type="button"
+              onClick={() => setIsDevPanelOpen((isOpen) => !isOpen)}
+            >
+              dev
+            </button>
+
+            {isDevPanelOpen && (
+              <div className="dev-tools__panel">
+                <span className="dev-tools__label">返回状态码：</span>
+                {[200, 400, 422, 500, 502, 503, 504].map((statusCode) => (
+                  <button
+                    key={statusCode}
+                    className="dev-tools__status"
+                    type="button"
+                    onClick={() => handleDebugStatusClick(statusCode)}
+                  >
+                    {statusCode}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
 
         <HealthBar
@@ -185,10 +217,10 @@ export function BattleScene() {
           onComplete={animation.completeProjectile}
         />
 
-        {someoneFainted && (
+        {isGameOver && (
           <div className="battle-result">
-            <p className={`battle-result__text ${battle.enemyHp <= 0 ? "battle-result__text--win" : "battle-result__text--lose"}`}>
-              {battle.enemyHp <= 0 ? "成功！" : "失败…"}
+            <p className={`battle-result__text ${battle.isTampered ? "battle-result__text--tampered" : battle.enemyHp <= 0 ? "battle-result__text--win" : "battle-result__text--lose"}`}>
+              {battle.isTampered ? "数据被篡改" : battle.enemyHp <= 0 ? "成功！" : "失败…"}
             </p>
             <button className="battle-restart" onClick={resetBattle}>
               再来一局
