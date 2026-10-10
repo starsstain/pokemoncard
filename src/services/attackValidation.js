@@ -16,8 +16,8 @@ export async function validateAttack(attackType, expectedDamage) {
   }
 }
 
-// Sends a standalone dev-panel request for inspection in the browser Network panel.
-// The API contract is status-only with an empty body: no request body, no response body to read.
+// Sends a standalone dev-panel request. The contract is status-only with an empty body:
+// no request body, no response body to read — the caller reacts to response.status alone.
 export function requestDebugStatus(statusCode) {
   return fetch(`${battleDevStatusUrl}/${statusCode}`, { method: "POST" });
 }

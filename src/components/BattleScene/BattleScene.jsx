@@ -28,15 +28,16 @@ export function BattleScene() {
   const serviceMessageTimerRef = useRef(null);
   useEffect(() => () => window.clearTimeout(serviceMessageTimerRef.current), []);
 
-  // 服务自身或通信故障（5xx、无状态码）只短暂提示，不判定篡改、不影响对局
+  // 格式错误与服务故障（400、5xx、无状态码）只短暂提示，不判定篡改
   const handleServiceDegraded = React.useCallback((status) => {
     const messageByStatus = {
-      500: "服务异常，不影响对局",
-      502: "网关错误，不影响对局",
-      503: "服务暂不可用，不影响对局",
-      504: "请求超时，不影响对局",
+      400: "请求格式错误",
+      500: "服务异常",
+      502: "网关错误",
+      503: "服务暂不可用",
+      504: "请求超时",
     };
-    setServiceMessage(messageByStatus[status] ?? "网络异常，不影响对局");
+    setServiceMessage(messageByStatus[status] ?? "网络异常");
     window.clearTimeout(serviceMessageTimerRef.current);
     serviceMessageTimerRef.current = window.setTimeout(() => setServiceMessage(null), 2500);
   }, []);
@@ -110,8 +111,15 @@ export function BattleScene() {
   };
 
   const handleDebugStatusClick = (statusCode) => {
-    // The Network panel is the only result surface for these standalone requests.
-    void requestDebugStatus(statusCode).catch(() => {});
+    const responseStatus = requestDebugStatus(statusCode)
+      .then((response) => response.status)
+      .catch(() => null);
+    // 422 演练完整链路：先看到被篡改的一击生效，稍后才出判决（对局结算后除外）
+    if (statusCode === 422 && !isGameOver) {
+      battle.stageTamperedAttack(responseStatus);
+      return;
+    }
+    void responseStatus.then((status) => battle.simulateStatus(status));
   };
 
   const resetBattle = () => {
