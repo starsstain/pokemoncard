@@ -119,7 +119,7 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     const damage = damageRef.current[attackType];
     updateBattle({
       [defenderKey]: true,
-      [`${defender}Hp`]: Math.max(0, battleRef.current[`${defender}Hp`] - report.damage),
+      [`${defender}Hp`]: Math.max(0, battleRef.current[`${defender}Hp`] - damage),
     });
 
     if (defender === "enemy") onEnemyHit?.();
