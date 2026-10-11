@@ -21,3 +21,7 @@ pnpm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+
+# Local supervisor state
+.pokemon_supervisor_state.json
+.pokemon_supervisor_state.tmp
