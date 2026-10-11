@@ -70,14 +70,15 @@ class Service:
     name: str
     command: str
     cwd: Path
+    environment: dict[str, str] = field(default_factory=dict)
     process: subprocess.Popen[bytes] | None = None
     started_at: float = field(default=0.0)
 
 
 SERVICES = (
-    Service("frontend", "npm run dev -- --host 127.0.0.1", ROOT),
-    Service("attack", "go run ./attack", BACKEND),
-    Service("battle", "go run ./battle", BACKEND),
+    Service("frontend", "npm install && npm run dev -- --host 127.0.0.1", ROOT),
+    Service("attack", "go run ./attack", BACKEND, {"APP_ENV": "dev"}),
+    Service("battle", "go run ./battle", BACKEND, {"APP_ENV": "dev"}),
 )
 
 
@@ -127,15 +128,23 @@ def send_failure_level(service: Service, value: int) -> None:
 
 def start_service(service: Service) -> None:
     print(f"[{service.name}] starting: {service.command}")
+    environment = os.environ | service.environment
     if platform.system() == "Windows":
         # cmd exits with the service, so the separate console closes on a crash.
         service.process = subprocess.Popen(
             ["cmd.exe", "/d", "/s", "/c", f"title PokemonCard - {service.name} && {service.command}"],
             cwd=service.cwd,
+            env=environment,
             creationflags=subprocess.CREATE_NEW_CONSOLE,
         )
     else:
-        service.process = subprocess.Popen(service.command, cwd=service.cwd, shell=True, start_new_session=True)
+        service.process = subprocess.Popen(
+            service.command,
+            cwd=service.cwd,
+            env=environment,
+            shell=True,
+            start_new_session=True,
+        )
     service.started_at = time.monotonic()
 
 
