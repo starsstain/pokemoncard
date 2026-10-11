@@ -1,0 +1,24 @@
+{
+  "name": "[Pokemon] terminal failure: {{component.name}} on {{host.name}}",
+  "type": "query alert",
+  "query": "max(last_2m):max:pokemoncard.supervisor.failure_level{service:pokemoncard,env:school} by {host,component} >= 2",
+  "message": "{{#is_warning}}\n⚠️ Warning: {{component.name}} terminal exited on {{host.name}}.\nfailure_level: {{value}}\nThe supervisor is retrying the service.\n{{/is_warning}}\n\n{{#is_alert}}\n🚨 Error: {{component.name}} terminal failed twice within one hour on {{host.name}}.\nfailure_level: {{value}}\nAutomatic restart has been disabled. Please investigate.\n{{/is_alert}}\n\n{{#is_recovery}}\n✅ Recovered: {{component.name}} terminal monitor is back to normal on {{host.name}}.\n{{/is_recovery}}\n\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "env:school",
+    "service:pokemoncard",
+    "team:bj_xsolla-school-group-dongxue",
+    "source:local-supervisor",
+    "managed_by:json"
+  ],
+  "priority": 3,
+  "options": {
+    "include_tags": true,
+    "notify_no_data": false,
+    "require_full_window": false,
+    "renotify_interval": 0,
+    "thresholds": {
+      "critical": 2,
+      "warning": 1
+    }
+  }
+}
