@@ -12,6 +12,50 @@ import (
 	"time"
 )
 
+// TestLegacyFaultIgnored 检查旧故障请求头既不在 battle 生效，也不转发到 attack。
+func TestLegacyFaultIgnored(t *testing.T) {
+	var calls atomic.Int32
+	attack := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("X-Pokemon-Debug-Fault") != "" {
+			t.Error("旧故障指令不应传给 attack")
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	t.Cleanup(attack.Close)
+	handler := newHandler(attack.URL, true)
+	for _, fault := range []string{"battle-502", "battle-503", "attack-500", "attack-timeout"} {
+		t.Run(fault, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, validationPath,
+				strings.NewReader(`{"attack_type":"throw","expected_damage":20}`))
+			request.Header.Set("Content-Type", "application/json")
+			request.Header.Set("X-Pokemon-Debug-Fault", fault)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			checkResponse(t, response, http.StatusOK)
+		})
+	}
+	if calls.Load() != 4 {
+		t.Fatalf("四次请求都应正常转发，实际调用 %d 次", calls.Load())
+	}
+}
+
+// TestPreflight 普通 JSON 请求的跨域预检仍可完成，且不会调用 attack。
+func TestPreflight(t *testing.T) {
+	request := httptest.NewRequest(http.MethodOptions, validationPath, nil)
+	request.Header.Set("Origin", "http://localhost:5173")
+	request.Header.Set("Access-Control-Request-Method", "POST")
+	request.Header.Set("Access-Control-Request-Headers", "content-type")
+	response := httptest.NewRecorder()
+	newHandler(":invalid", false).ServeHTTP(response, request)
+	checkResponse(t, response, http.StatusNoContent)
+	if response.Header().Get("Access-Control-Allow-Origin") != "*" ||
+		response.Header().Get("Access-Control-Allow-Methods") != "POST, OPTIONS" ||
+		response.Header().Get("Access-Control-Allow-Headers") != "Content-Type" {
+		t.Fatalf("跨域响应头不符合约定：%v", response.Header())
+	}
+}
+
 // TestForwarding 用真实 HTTP 连接检查请求内容和 attack 各类状态码的透传。
 func TestForwarding(t *testing.T) {
 	for _, code := range []int{200, 400, 422, 500, 502, 503, 504, 307} {
@@ -33,7 +77,7 @@ func TestForwarding(t *testing.T) {
 				_, _ = w.Write([]byte("这段上游响应体不应转发给前端"))
 			}))
 			defer attack.Close()
-			battle := httptest.NewServer(newHandler(attack.URL + "/internal/v1/attack-validations"))
+			battle := httptest.NewServer(newHandler(attack.URL+"/internal/v1/attack-validations", false))
 			defer battle.Close()
 			response, err := battle.Client().Post(battle.URL+validationPath, contentType, strings.NewReader(body))
 			if err != nil {
@@ -62,7 +106,7 @@ func TestInvalidInputStillForwarded(t *testing.T) {
 	}))
 	defer attack.Close()
 	response := httptest.NewRecorder()
-	newHandler(attack.URL).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, strings.NewReader("broken json")))
+	newHandler(attack.URL, false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, strings.NewReader("broken json")))
 	checkResponse(t, response, http.StatusUnprocessableEntity)
 }
 
@@ -73,12 +117,13 @@ func TestRouting(t *testing.T) {
 		want         int
 	}{
 		{http.MethodPost, "/unknown", http.StatusNotFound},
+		{http.MethodPost, "/api/v1/dev/500", http.StatusNotFound},
 		{http.MethodGet, validationPath, http.StatusMethodNotAllowed},
 		{http.MethodHead, validationPath, http.StatusMethodNotAllowed},
 	} {
 		response := httptest.NewRecorder()
 		// 无效上游地址可验证路由错误不会继续进入转发逻辑。
-		newHandler(":invalid").ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
+		newHandler(":invalid", false).ServeHTTP(response, httptest.NewRequest(tc.method, tc.path, nil))
 		checkResponse(t, response, tc.want)
 		if tc.want == http.StatusMethodNotAllowed && response.Header().Get("Allow") != http.MethodPost {
 			t.Error("405 应声明 Allow: POST")
@@ -96,7 +141,7 @@ func TestTimeout(t *testing.T) {
 	defer attack.Close()
 	started := time.Now()
 	response := httptest.NewRecorder()
-	newHandler(attack.URL).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler(attack.URL, false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusGatewayTimeout)
 	if elapsed := time.Since(started); elapsed < 400*time.Millisecond || elapsed > 2*time.Second {
 		t.Errorf("500ms 超时耗时异常：%s", elapsed)
@@ -111,7 +156,7 @@ func TestUnavailable(t *testing.T) {
 	attack := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	attack.Close()
 	response := httptest.NewRecorder()
-	newHandler(attack.URL).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler(attack.URL, false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusServiceUnavailable)
 }
 
@@ -134,14 +179,14 @@ func TestMalformedResponse(t *testing.T) {
 		_, _ = io.WriteString(connection, "not-an-http-response\r\n\r\n")
 	}()
 	response := httptest.NewRecorder()
-	newHandler("http://"+listener.Addr().String()).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler("http://"+listener.Addr().String(), false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusBadGateway)
 }
 
 // TestInternalError 验证 battle 自身无法创建转发请求时返回空的 500。
 func TestInternalError(t *testing.T) {
 	response := httptest.NewRecorder()
-	newHandler(":invalid").ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
+	newHandler(":invalid", false).ServeHTTP(response, httptest.NewRequest(http.MethodPost, validationPath, nil))
 	checkResponse(t, response, http.StatusInternalServerError)
 }
 

@@ -8,19 +8,15 @@ import (
 	"log"
 	"mime"
 	"net/http"
-	"time"
 
 	"github.com/DataDog/datadog-go/v5/statsd"
 	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
+	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/config"
 )
 
-const (
-	validationPath     = "/internal/v1/attack-validations"
-	debugFaultHeader   = "X-Pokemon-Debug-Fault"
-	faultAttack500     = "attack-500"
-	faultAttackTimeout = "attack-timeout"
-)
+const validationPath = "/internal/v1/attack-validations"
 
 // attackRequest 对应请求 JSON；指针用于区分缺失或 null 与明确提交的整数 0。
 type attackRequest struct {
@@ -43,6 +39,11 @@ func mustStatsd() *statsd.Client {
 }
 
 func main() {
+	settings, err := config.Load(".env")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("attack 开发接口开启=%t", settings.DevMode)
 	const address = "127.0.0.1:8081"
 	// APM：启动 Datadog 追踪器，trace 数据经本机 Agent（8126 端口）上报。
 	// 显式写 IPv4 地址：Windows 上默认 localhost 先解析为 ::1，Agent 只监听 IPv4。
@@ -55,7 +56,7 @@ func main() {
 	)
 	defer tracer.Stop()
 	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
-	wrapped := ddhttp.WrapHandler(http.HandlerFunc(handleValidation), "attack", validationPath)
+	wrapped := ddhttp.WrapHandler(newHandler(settings.DevMode), "attack", validationPath)
 	// log.Fatal 会跳过 defer，须先手动 Stop 刷出缓冲中的 trace 再退出。
 	if err := http.ListenAndServe(address, wrapped); err != nil {
 		tracer.Stop()
@@ -72,6 +73,26 @@ func logWithTrace(r *http.Request, level, msg string, args ...any) {
 	}
 	prefix := fmt.Sprintf("level=%s service=attack dd.trace_id=%s ", level, traceID)
 	log.Printf(prefix+msg, args...)
+}
+
+// newHandler 在启动时建立路由表；非开发模式不注册开发路径。
+func newHandler(devMode bool) http.Handler {
+	routes := map[string]http.HandlerFunc{validationPath: handleValidation}
+	//如果是开发者模式，加两个模拟故障的路由
+	if devMode {
+		routes[dev500Path] = handleDev
+		routes[devTimeoutPath] = handleDev
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		//查找当前请求路径在不在路由表里
+		if handler, exists := routes[r.URL.Path]; exists {
+			handler(w, r)
+			return
+		}
+		// 未注册路径直接返回空的 404，不使用会附带文字的默认错误页。
+		w.WriteHeader(http.StatusNotFound)
+		log.Printf("attack method=%s path=%s status=%d", r.Method, r.URL.Path, http.StatusNotFound)
+	})
 }
 
 // handleValidation 读取请求并返回状态码；路径、方法和内部错误的响应体也保持为空。
@@ -103,14 +124,6 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Allow", http.MethodPost)
 		status = http.StatusMethodNotAllowed
 		return
-	}
-	if r.Header.Get(debugFaultHeader) == faultAttack500 {
-		status = http.StatusInternalServerError
-		logWithTrace(r, "ERROR", "attack 故障注入：返回 500")
-		return
-	}
-	if r.Header.Get(debugFaultHeader) == faultAttackTimeout {
-		time.Sleep(600 * time.Millisecond)
 	}
 	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || contentType != "application/json" {
