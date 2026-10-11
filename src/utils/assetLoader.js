@@ -2,6 +2,8 @@ import backTallGrass from "../assets/back_tall_grass.png";
 import groundTallGrass from "../assets/ground_tall_grass.png";
 import eeveeBack from "../assets/eevee_back.png";
 import bulbasaurFront from "../assets/bulbasaur_front.png";
+import dialogBox from "../assets/dialog_box.png";
+import attacked from "../assets/attacked.png";
 import trainerFrame1 from "../assets/player/brendan_playerback_1.png";
 import trainerFrame2 from "../assets/player/brendan_playerback_2.png";
 import trainerFrame3 from "../assets/player/brendan_playerback_3.png";
@@ -12,6 +14,8 @@ export const battleAssets = {
   groundTallGrass,
   eeveeBack,
   bulbasaurFront,
+  dialogBox,
+  attacked,
   trainerFrames: [trainerFrame1, trainerFrame2, trainerFrame3, trainerFrame4],
 };
 

@@ -1,27 +1,23 @@
 const battleValidationUrl = "http://127.0.0.1:8080/api/v1/attack-validations";
+const battleDevStatusUrl = "http://127.0.0.1:8080/api/v1/dev";
 
-const debugRequests = {
-  200: { body: { attack_type: "throw", expected_damage: 20 } },
-  400: { body: { attack_type: "invalid", expected_damage: 20 } },
-  422: { body: { attack_type: "throw", expected_damage: 999 } },
-  500: { body: { attack_type: "throw", expected_damage: 20 }, fault: "attack-500" },
-  502: { body: { attack_type: "throw", expected_damage: 20 }, fault: "battle-502" },
-  503: { body: { attack_type: "throw", expected_damage: 20 }, fault: "battle-503" },
-  504: { body: { attack_type: "throw", expected_damage: 20 }, fault: "attack-timeout" },
-};
+// 发起一次攻击校验：契约只有 HTTP 状态码，响应体为空、不解析。
+// 网络失败（battle 未启动或连接中断）时返回 null，由调用方按“无状态码”处理、不扣血。
+export async function validateAttack(attackType, expectedDamage) {
+  try {
+    const response = await fetch(battleValidationUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ attack_type: attackType, expected_damage: expectedDamage }),
+    });
+    return response.status;
+  } catch {
+    return null;
+  }
+}
 
-// Sends a standalone validation request for inspection in the browser Network panel.
-// The response body is intentionally not read because the API contract is status-only.
+// Sends a standalone dev-panel request. The contract is status-only with an empty body:
+// no request body, no response body to read — the caller reacts to response.status alone.
 export function requestDebugStatus(statusCode) {
-  const request = debugRequests[statusCode];
-  if (!request) return Promise.reject(new Error(`Unsupported debug status: ${statusCode}`));
-
-  const headers = { "Content-Type": "application/json" };
-  if (request.fault) headers["X-Pokemon-Debug-Fault"] = request.fault;
-
-  return fetch(battleValidationUrl, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(request.body),
-  });
+  return fetch(`${battleDevStatusUrl}/${statusCode}`, { method: "POST" });
 }

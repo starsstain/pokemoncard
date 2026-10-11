@@ -2,7 +2,12 @@ module school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend
 
 go 1.26.0
 
-require gopkg.in/DataDog/dd-trace-go.v1 v1.74.8
+require github.com/joho/godotenv v1.5.1
+
+require (
+	github.com/DataDog/datadog-go/v5 v5.6.0
+	gopkg.in/DataDog/dd-trace-go.v1 v1.74.8
+)
 
 require (
 	github.com/DataDog/datadog-agent/comp/core/tagger/origindetection v0.67.0 // indirect
@@ -13,7 +18,6 @@ require (
 	github.com/DataDog/datadog-agent/pkg/util/log v0.67.0 // indirect
 	github.com/DataDog/datadog-agent/pkg/util/scrubber v0.67.0 // indirect
 	github.com/DataDog/datadog-agent/pkg/version v0.67.0 // indirect
-	github.com/DataDog/datadog-go/v5 v5.6.0 // indirect
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.3.0 // indirect
 	github.com/DataDog/dd-trace-go/v2 v2.3.0 // indirect
 	github.com/DataDog/go-libddwaf/v4 v4.3.2 // indirect
