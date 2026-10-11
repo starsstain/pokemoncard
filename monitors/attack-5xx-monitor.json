@@ -1,15 +1,18 @@
 {
   "name": "[宝可梦] attack出现5xx错误",
   "type": "log alert",
-  "query": "service:attack *status=5*",
-  "message": "{{#is_alert}}🔴 attack 5 分钟内出现超过 {{threshold}} 条 5xx 日志（当前 {{value}} 条）。\n定位逻辑：battle 5xx 与本监控同时红 = attack 内部错误；仅 battle 红 = attack 挂掉/超时或 battle 自身问题。排查：Logs 搜 service:attack *status=5*，结合 dd.trace_id 跳转对应 trace。{{/is_alert}}\n{{#is_recovery}}✅ attack 5xx 错误已恢复。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
-  "tags": ["team:bj-xsolla-school-group-2"],
+  "query": "logs(\"service:attack *status=5*\").index(\"*\").rollup(\"count\").last(\"5m\") > 3",
+  "message": "{{#is_alert}}🔴 attack 5 分钟内出现超过 {{threshold}} 条 5xx 日志（当前 {{value}} 条）。\n定位逻辑：battle 5xx 与本监控同时红 = attack 内部错误；仅 battle 红 = attack 挂掉/超时或 battle 自身问题。排查：Logs 搜 service:attack *status=5*，结合 dd.trace_id 跳转对应 trace。{{/is_alert}}\n{{#is_recovery}}✅ attack 5xx 错误已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "env:school",
+    "service:pokemoncard",
+    "team:bj_xsolla-school-group-dongxue",
+    "version:1.0.0"
+  ],
   "options": {
     "thresholds": {
       "critical": 3
     },
-    "timeAggregator": "count",
-    "timeframe": "last_5m",
     "notify_no_data": false,
     "evaluation_delay": 60
   }

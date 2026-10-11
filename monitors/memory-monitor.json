@@ -2,8 +2,13 @@
   "name": "[宝可梦] 内存可用不足",
   "type": "query alert",
   "query": "avg(last_15m):avg:system.mem.pct_usable{host:zhang-pokemon-backend} < 0.1",
-  "message": "{{#is_alert}}🟡 可用内存持续不足：15 分钟内低于 10%，当前 {{value}}。\n注意：Windows 上内存指标用 system.mem.pct_usable（可用率），不存在 system.mem.pct。排查：Processes 面板看内存占用进程。{{/is_alert}}\n{{#is_recovery}}✅ 内存已恢复。{{/is_recovery}}\n@slack-bj-xsolla-school-team2-alerts",
-  "tags": ["team:bj-xsolla-school-group-2"],
+  "message": "{{#is_alert}}🟡 可用内存持续不足：15 分钟内低于 10%，当前 {{value}}。\n注意：Windows 上内存指标用 system.mem.pct_usable（可用率），不存在 system.mem.pct。排查：Processes 面板看内存占用进程。{{/is_alert}}\n{{#is_recovery}}✅ 内存已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "env:school",
+    "service:pokemoncard",
+    "team:bj_xsolla-school-group-dongxue",
+    "version:1.0.0"
+  ],
   "options": {
     "thresholds": {
       "critical": 0.1,
