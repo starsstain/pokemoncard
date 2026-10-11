@@ -52,7 +52,9 @@ func main() {
 		tracer.WithEnv("school"),
 		tracer.WithAgentAddr("127.0.0.1:8126"),
 		tracer.WithGlobalTag("version", "1.0.0"),
-		tracer.WithGlobalTag("team", "bj-xsolla-school-group-2"),
+		tracer.WithGlobalTag("env", "school"),
+		tracer.WithGlobalTag("service", "pokemoncard"),
+		tracer.WithGlobalTag("team", "bj_xsolla-school-group-dongxue"),
 	)
 	defer tracer.Stop()
 	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
