@@ -16,6 +16,10 @@ import (
 
 const validationPath = "/api/v1/attack-validations"
 
+// corsAllowedHeaders permits the RUM SDK's W3C and Datadog propagation headers
+// on browser-to-battle cross-origin requests.
+const corsAllowedHeaders = "Content-Type, traceparent, tracestate, baggage, x-datadog-trace-id, x-datadog-parent-id, x-datadog-sampling-priority, x-datadog-origin"
+
 // main 启动独立的 battle 进程，attack 需另行启动。
 func main() {
 	settings, err := config.Load(".env")
@@ -140,5 +144,5 @@ func forwardingStatus(err error) int {
 func setCORSHeaders(w http.ResponseWriter) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", http.MethodPost+", "+http.MethodOptions)
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Headers", corsAllowedHeaders)
 }
