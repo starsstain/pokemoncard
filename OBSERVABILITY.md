@@ -59,18 +59,18 @@ monitors/                   # 监控器定义（as-code，与线上监控器一�
   cpu-monitor.json                    # ↔ 线上：CPU持续过高
   memory-monitor.json                 # ↔ 线上：内存可用不足
   battle-latency-p95-monitor.json     # ↔ 线上：P95延迟过高
+  attack-validation-failure-rate-monitor.json  # ↔ 线上：attack校验失败率过高
   pokemoncard-supervisor-failure-level.json  # ↔ 线上：进程退出监控
 ```
 
 ## 应用监控器
 
+用 `sync_datadog_monitor.py` 批量创建或更新（as-code）：
+
 ```bash
-export DD_API_KEY=... DD_APP_KEY=... DD_SITE=us5.datadoghq.com
-for f in monitors/*.json; do
-  curl -sX POST "https://api.${DD_SITE}/api/v1/monitor" \
-    -H "DD-API-KEY: ${DD_API_KEY}" -H "DD-APPLICATION-KEY: ${DD_APP_KEY}" \
-    -H "Content-Type: application/json" -d @"$f"; echo
-done
+# .env 里配好 DD_API_KEY / DD_APP_KEY / DD_SITE
+py sync_datadog_monitor.py --dry-run   # 先预览
+py sync_datadog_monitor.py             # 实际应用
 ```
 
 ## 截图
