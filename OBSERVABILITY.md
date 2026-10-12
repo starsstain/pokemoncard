@@ -90,4 +90,8 @@ py sync_datadog_monitor.py             # 实际应用
 
 ### （b）Slack 告警触发与恢复
 
-> 待补充：故意触发告警（如停掉 attack 服务或拉高失败率），截取 Slack 中告警触发和随后恢复的截图。
+![Slack 告警触发与恢复](docs/screenshots/slack-alert-trigger-recovery.png)
+
+上图展示：
+- **触发**：battle 5 分钟内出现超过 3 条 5xx 日志，告警变红，通知到 Slack 频道
+- **恢复**：错误数回落后，自动发送恢复通知
