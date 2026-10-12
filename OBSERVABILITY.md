@@ -23,7 +23,11 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | **Trace（APM）** | `attack/main.go`、`battle/main.go`：`ddhttp.WrapHandler` 包裹入口，`ddhttp.WrapClient` 包裹转发客户端，battle→attack 上下文自动透传。attack 校验时打自定义 span tag `attack.type`。 |
 | **日志（Log）** | `logWithTrace()` 函数输出 `level= service= dd.trace_id=` 结构化日志，实现 log↔trace 互跳。失败路径（422/500/转发失败）打 ERROR，参数错误打 WARN。 |
 | **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 `pokemon.attack.validation.count{result:success\|failure, env, version, service, team}` 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。 |
-| **RUM** | 前端接入（孟令奇负责），上报页面加载、JS 错误、用户操作。 |
+| **RUM** | `src/monitoring/rum.js`：使用 `@datadog/browser-rum` 和 `@datadog/browser-rum-react` 初始化 `PokemonCardWeb` RUM 应用；从 `.env.local` 读取 `VITE_DD_APPLICATION_ID`、`VITE_DD_CLIENT_TOKEN`，站点为 `us5.datadoghq.com`。`sessionSampleRate: 100` 采集全部会话，`sessionReplaySampleRate: 20` 采集 20% 会话回放；开启页面视图、用户交互、网络资源和 Long Task 采集，并挂载 `reactPlugin({ router: false })`。`service` 为 `pokemon-battle-frontend`，`env` 默认为 `school`，`version` 默认为 `1.0.0`，并添加 `team` 全局上下文。 | 
+
+前端 RUM 监控四类资源：**页面加载（View）**、**用户操作（Action）**、**JavaScript 异常（Error）**、**前端到后端请求（Resource）**。开发模式下右上角的 `dev` 面板提供“模拟 JS 异常”和“模拟资源请求失败”入口；错误通过 `datadogRum.addError()` 上报，按钮操作通过 `datadogRum.addAction()` 上报，便于在 RUM Explorer 中验证错误与资源事件。真实请求由 `src/services/attackValidation.js` 发往 battle 服务。
+
+RUM 配置了针对 `http://127.0.0.1:8080` 的分布式追踪传播（`tracecontext` 与 `datadog`，采样率 100%）。要从 RUM 资源事件跳转到后端 trace，Datadog RUM 应用需允许浏览器当前来源；battle 的 CORS 响应需允许 trace 请求头；后端还需启用 Datadog APM HTTP instrumentation 并将收到的上下文传播到 attack。**此关联是否可用取决于上述后端及来源配置；仅有前端 RUM 初始化不代表 RUM→trace 已验证。**
 
 统一标签：`env:school`、`service:pokemoncard`、`version:1.0.0`、`team:bj-xsolla-school-group-2`，所有信号（trace/log/metric）均带以上标签。
 
@@ -77,7 +81,7 @@ py sync_datadog_monitor.py             # 实际应用
 
 ### （a）RUM 会话 → 后端 trace → 关联日志 → 业务指标
 
-待 RUM 接入后补充。
+
 
 ### （b）Slack 告警触发与恢复
 
