@@ -6,6 +6,7 @@ import { useThrowAnimation } from "../../hooks/useThrowAnimation";
 import { defaultDamages, useBattle } from "../../hooks/useBattle";
 import { battleAssets } from "../../utils/assetLoader";
 import { requestDebugStatus } from "../../services/attackValidation";
+import { reportRumAction, reportRumError } from "../../monitoring/rum";
 import { GrassPlatform } from "../GrassPlatform/GrassPlatform";
 import { HealthBar } from "../HealthBar/HealthBar";
 import { Pokemon } from "../Pokemon/Pokemon";
@@ -113,6 +114,7 @@ export function BattleScene() {
   };
 
   const handleDebugStatusClick = (statusCode) => {
+    reportRumAction("dev_status_request", { status_code: statusCode });
     const responseStatus = requestDebugStatus(statusCode)
       .then((response) => response.status)
       .catch(() => null);
@@ -122,6 +124,39 @@ export function BattleScene() {
       return;
     }
     void responseStatus.then((status) => battle.simulateStatus(status));
+  };
+
+  const handleRumErrorDemo = () => {
+    reportRumAction("dev_frontend_error_demo");
+    const error = new Error("Datadog RUM dev 演练：模拟前端 JavaScript 异常");
+    reportRumError(error, { source: "dev_panel", error_type: "frontend_demo" });
+    setServiceMessage("已将模拟前端异常上报至 RUM（页面继续运行）");
+    window.clearTimeout(serviceMessageTimerRef.current);
+    serviceMessageTimerRef.current = window.setTimeout(() => setServiceMessage(null), 2500);
+  };
+
+  const handleRumResourceErrorDemo = async () => {
+    reportRumAction("dev_resource_error_demo");
+    try {
+      const response = await fetch("http://127.0.0.1:8080/api/v1/rum-monitoring-demo/missing", {
+        method: "GET",
+      });
+      if (!response.ok) {
+        reportRumError(new Error(`RUM 演练资源请求失败：HTTP ${response.status}`), {
+          source: "dev_panel",
+          resource: "backend_demo_endpoint",
+          http_status: response.status,
+        });
+        setServiceMessage(`资源请求失败：HTTP ${response.status}（已记录）`);
+      } else {
+        setServiceMessage("资源请求返回成功；若要演练错误，请确认后端关闭或返回错误");
+      }
+    } catch (error) {
+      reportRumError(error, { source: "dev_panel", resource: "backend_demo_endpoint" });
+      setServiceMessage("资源请求失败：网络异常（已记录）");
+    }
+    window.clearTimeout(serviceMessageTimerRef.current);
+    serviceMessageTimerRef.current = window.setTimeout(() => setServiceMessage(null), 2500);
   };
 
   // dev：修改某类攻击的名义伤害（扣血与上报同值），用于演练篡改检测；不允许负数，0 可以
@@ -174,6 +209,13 @@ export function BattleScene() {
 
             {isDevPanelOpen && (
               <div className="dev-tools__panel">
+                <span className="dev-tools__label">Datadog RUM 演练：</span>
+                <button className="dev-tools__status" type="button" onClick={handleRumErrorDemo}>
+                  模拟 JS 异常
+                </button>
+                <button className="dev-tools__status" type="button" onClick={handleRumResourceErrorDemo}>
+                  模拟资源请求失败
+                </button>
                 <span className="dev-tools__label">返回状态码：</span>
                 {[200, 400, 422, 500, 502, 503, 504].map((statusCode) => (
                   <button
