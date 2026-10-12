@@ -5,7 +5,7 @@
   "message": "{{#is_alert}}🔴 battle P95 延迟超过 500ms，当前 {{value}}s。\n背景：battle 调 attack 的客户端超时为 500ms，正常请求毫秒级；P95 破 0.5s 说明大量请求在等超时（典型：attack 变慢或故障注入 attack-timeout）。排查：APM→battle→Traces 按耗时排序看慢请求火焰图。{{/is_alert}}\n{{#is_recovery}}✅ P95 延迟已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
-    "service:pokemoncard",
+    "service:battle",
     "team:bj-xsolla-school-group-2",
     "version:1.0.0"
   ],
@@ -14,7 +14,7 @@
       "critical": 0.5,
       "warning": 0.3
     },
-    "notify_no_data": true,
+    "notify_no_data": false,
     "no_data_timeframe": 10,
     "evaluation_delay": 60
   }

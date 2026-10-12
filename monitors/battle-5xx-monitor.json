@@ -5,7 +5,7 @@
   "message": "{{#is_alert}}🔴 battle 5 分钟内出现超过 {{threshold}} 条 5xx 日志（当前 {{value}} 条）。\n可能原因：转发 attack 失败（502/503/504）、故障注入测试。排查：Logs 搜 service:battle @http.status_code:[500 TO 599] 看具体状态码分布。{{/is_alert}}\n{{#is_recovery}}✅ battle 5xx 错误已恢复（窗口内错误数回落）。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
-    "service:pokemoncard",
+    "service:battle",
     "team:bj-xsolla-school-group-2",
     "version:1.0.0"
   ],
