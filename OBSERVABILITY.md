@@ -25,7 +25,7 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 `pokemon.attack.validation.count{result:success\|failure, env, version, service, team}` 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。 |
 | **RUM** | 前端接入（孟令奇负责），上报页面加载、JS 错误、用户操作。 |
 
-统一标签：`env:school`、`service:pokemoncard`、`version:1.0.0`、`team:bj_xsolla-school-group-dongxue`，所有信号（trace/log/metric）均带以上标签。
+统一标签：`env:school`、`service:pokemoncard`、`version:1.0.0`、`team:bj-xsolla-school-group-2`，所有信号（trace/log/metric）均带以上标签。
 
 ## 监控表
 

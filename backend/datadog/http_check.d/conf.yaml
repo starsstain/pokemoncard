@@ -13,7 +13,7 @@ instances:
     timeout: 5
     min_collection_interval: 60
     tags:
-      - team:bj_xsolla-school-group-dongxue
+      - team:bj-xsolla-school-group-2
 
   - name: attack-health
     url: http://127.0.0.1:8081/internal/v1/attack-validations
@@ -25,4 +25,4 @@ instances:
     timeout: 5
     min_collection_interval: 60
     tags:
-      - team:bj_xsolla-school-group-dongxue
+      - team:bj-xsolla-school-group-2

@@ -5,18 +5,18 @@ logs:
     service: battle
     source: pokemon-battle
     tags:
-      - team:bj_xsolla-school-group-dongxue
+      - team:bj-xsolla-school-group-2
 
   - type: file
     path: C:/dd-logs/attack.log
     service: attack
     source: pokemon-attack
     tags:
-      - team:bj_xsolla-school-group-dongxue
+      - team:bj-xsolla-school-group-2
 
   - type: file
     path: C:/dd-logs/supervisor.log
     service: supervisor
     source: pokemon-supervisor
     tags:
-      - team:bj_xsolla-school-group-dongxue
+      - team:bj-xsolla-school-group-2

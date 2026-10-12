@@ -33,7 +33,7 @@ DATADOG_STATIC_TAGS = (
     "env:school",
     "service:pokemoncard",
     "version:1.0.0",
-    "team:bj_xsolla-school-group-dongxue",
+    "team:bj-xsolla-school-group-2",
 )
 
 def load_env_file() -> None:
