@@ -53,7 +53,6 @@ func main() {
 		tracer.WithAgentAddr("127.0.0.1:8126"),
 		tracer.WithGlobalTag("version", "1.0.0"),
 		tracer.WithGlobalTag("env", "school"),
-		tracer.WithGlobalTag("service", "pokemoncard"),
 		tracer.WithGlobalTag("team", "bj_xsolla-school-group-dongxue"),
 	)
 	defer tracer.Stop()
