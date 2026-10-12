@@ -118,7 +118,7 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 				"env:school",
 				"version:1.0.0",
 				"service:pokemoncard",
-				"team:bj_xsolla-school-group-dongxue",
+				"team:bj-xsolla-school-group-2",
 			}, 1)
 		}
 	}()

@@ -6,7 +6,7 @@
   "tags": [
     "env:school",
     "service:pokemoncard",
-    "team:bj_xsolla-school-group-dongxue",
+    "team:bj-xsolla-school-group-2",
     "source:local-supervisor",
     "managed_by:json",
     "version:1.0.0"

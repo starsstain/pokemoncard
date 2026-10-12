@@ -5,7 +5,7 @@
   "message": "{{#is_alert}}🚨 The frontend recorded {{value}} RUM errors in the last 5 minutes (threshold: {{threshold}}).\n\nInvestigate RUM Explorer: service:pokemon-battle-frontend @type:error.{{/is_alert}}\n{{#is_recovery}}✅ Frontend RUM error volume has recovered.{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "service:pokemon-battle-frontend",
-    "team:bj_xsolla-school-group-dongxue",
+    "team:bj-xsolla-school-group-2",
     "monitor:rum",
     "env:school",
     "version:1.0.0"
