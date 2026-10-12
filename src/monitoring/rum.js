@@ -11,7 +11,7 @@ if (applicationId && clientToken) {
     clientToken,
     site: import.meta.env.VITE_DD_SITE || "us5.datadoghq.com",
     service: "pokemon-battle-frontend",
-    env: import.meta.env.VITE_DD_ENV || "local",
+    env: import.meta.env.VITE_DD_ENV || "school",
     version: import.meta.env.VITE_APP_VERSION || "1.0.0",
     sessionSampleRate: 100,
     sessionReplaySampleRate: 20,
