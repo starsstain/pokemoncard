@@ -51,7 +51,7 @@ func TestPreflight(t *testing.T) {
 	checkResponse(t, response, http.StatusNoContent)
 	if response.Header().Get("Access-Control-Allow-Origin") != "*" ||
 		response.Header().Get("Access-Control-Allow-Methods") != "POST, OPTIONS" ||
-		response.Header().Get("Access-Control-Allow-Headers") != "Content-Type" {
+		response.Header().Get("Access-Control-Allow-Headers") != corsAllowedHeaders {
 		t.Fatalf("跨域响应头不符合约定：%v", response.Header())
 	}
 }
