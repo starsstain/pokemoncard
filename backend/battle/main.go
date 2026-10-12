@@ -53,7 +53,7 @@ func logWithTrace(r *http.Request, level, msg string, args ...any) {
 	if ok {
 		traceID = fmt.Sprintf("%d", span.Context().TraceID())
 	}
-	prefix := fmt.Sprintf("level=%s service=battle dd.trace_id=%s ", level, traceID)
+	prefix := fmt.Sprintf("level=%s service=battle env=school version=1.0.0 team=bj_xsolla-school-group-dongxue dd.trace_id=%s ", level, traceID)
 	log.Printf(prefix+msg, args...)
 }
 
