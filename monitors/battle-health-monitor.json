@@ -1,0 +1,20 @@
+{
+  "name": "[宝可梦] battle服务健康检查",
+  "type": "query alert",
+  "query": "avg(last_5m):avg:network.http.can_connect{instance:battle_health} by {host} < 0.9",
+  "message": "{{#is_alert}}🔴 battle 服务健康检查失败（Agent 每 60 秒 POST 真实业务请求，未返回 200），当前可用率 {{value}}。\n探测走 battle→attack 全链路，任一服务挂掉都会触发。排查：确认两个进程是否存活、查 service:battle 的 ERROR 日志。{{/is_alert}}\n{{#is_recovery}}✅ battle 服务健康检查已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "env:school",
+    "service:pokemoncard",
+    "team:bj_xsolla-school-group-dongxue",
+    "version:1.0.0"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 0.9
+    },
+    "notify_no_data": true,
+    "no_data_timeframe": 10,
+    "evaluation_delay": 60
+  }
+}

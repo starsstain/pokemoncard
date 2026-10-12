@@ -1,0 +1,19 @@
+{
+  "name": "[宝可梦] battle出现5xx错误",
+  "type": "log alert",
+  "query": "logs(\"service:battle *status=5*\").index(\"*\").rollup(\"count\").last(\"5m\") > 3",
+  "message": "{{#is_alert}}🔴 battle 5 分钟内出现超过 {{threshold}} 条 5xx 日志（当前 {{value}} 条）。\n可能原因：转发 attack 失败（502/503/504）、故障注入测试。排查：Logs 搜 service:battle *status=5* 看具体状态码分布。{{/is_alert}}\n{{#is_recovery}}✅ battle 5xx 错误已恢复（窗口内错误数回落）。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "env:school",
+    "service:pokemoncard",
+    "team:bj_xsolla-school-group-dongxue",
+    "version:1.0.0"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 3
+    },
+    "notify_no_data": false,
+    "evaluation_delay": 60
+  }
+}

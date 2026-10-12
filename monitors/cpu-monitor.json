@@ -1,0 +1,20 @@
+{
+  "name": "[宝可梦] CPU持续过高",
+  "type": "query alert",
+  "query": "avg(last_15m):avg:system.cpu.user{host:zhang-pokemon-backend} > 95",
+  "message": "{{#is_alert}}🟡 CPU 持续过高：15 分钟内始终高于 95%，当前 {{value}}%。\n阈值设计为“持续超标才告警”，短时飙高（如游戏加载）不触发。排查：Processes 面板找吃 CPU 的进程。{{/is_alert}}\n{{#is_recovery}}✅ CPU 已回落。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "env:school",
+    "service:pokemoncard",
+    "team:bj_xsolla-school-group-dongxue",
+    "version:1.0.0"
+  ],
+  "options": {
+    "thresholds": {
+      "critical": 95,
+      "warning": 85
+    },
+    "notify_no_data": false,
+    "evaluation_delay": 60
+  }
+}
