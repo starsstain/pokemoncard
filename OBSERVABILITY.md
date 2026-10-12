@@ -22,10 +22,10 @@ battle（:8080）───HTTP───▶ attack（:8081）
 |------|-----------|
 | **Trace（APM）** | `attack/main.go`、`battle/main.go`：`ddhttp.WrapHandler` 包裹入口，`ddhttp.WrapClient` 包裹转发客户端，battle→attack 上下文自动透传。attack 校验时打自定义 span tag `attack.type`。 |
 | **日志（Log）** | `logWithTrace()` 函数输出 `level= service= dd.trace_id=` 结构化日志，实现 log↔trace 互跳。失败路径（422/500/转发失败）打 ERROR，参数错误打 WARN。 |
-| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 `pokemon.attack.validation.count{result:success|failure}` 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。 |
+| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 `pokemon.attack.validation.count{result:success\|failure, env, version, service, team}` 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。 |
 | **RUM** | 前端接入（孟令奇负责），上报页面加载、JS 错误、用户操作。 |
 
-统一标签：`env:school`、`service`、`version:1.0.0`、`team:bj-xsolla-school-group-2`。
+统一标签：`env:school`、`service:pokemoncard`、`version:1.0.0`、`team:bj_xsolla-school-group-dongxue`，所有信号（trace/log/metric）均带以上标签。
 
 ## 监控表
 
@@ -55,10 +55,10 @@ monitors/                   # 监控器定义（as-code，与线上监控器一�
   battle-health-monitor.json          # ↔ 线上：battle服务健康检查
   battle-5xx-monitor.json             # ↔ 线上：battle出现5xx错误
   attack-5xx-monitor.json             # ↔ 线上：attack出现5xx错误
-  internal-error-monitor.json         # ↔ 线上：程序内部异常
   cpu-monitor.json                    # ↔ 线上：CPU持续过高
   memory-monitor.json                 # ↔ 线上：内存可用不足
   battle-latency-p95-monitor.json     # ↔ 线上：P95延迟过高
+  pokemoncard-supervisor-failure-level.json  # ↔ 线上：进程退出监控
 ```
 
 ## 应用监控器
@@ -72,7 +72,16 @@ for f in monitors/*.json; do
 done
 ```
 
-## 截图（待补）
+## 截图
 
-- （a）RUM 会话 → 后端 trace → 关联日志 → 业务指标
-- （b）Slack 告警触发与恢复
+### （a）RUM 会话 → 后端 trace → 关联日志 → 业务指标
+
+待 RUM 接入后补充。
+
+### （b）Slack 告警触发与恢复
+
+![Slack 告警触发与恢复](docs/screenshots/slack-alert-trigger-recovery.png)
+
+上图展示：
+- **触发**：battle 5 分钟内出现超过 3 条 5xx 日志，告警变红，通知到 Slack 频道
+- **恢复**：错误数回落后，自动发送恢复通知
