@@ -25,6 +25,7 @@ BACKEND = ROOT / "backend"
 STATE_FILE = ROOT / ".pokemon_supervisor_state.json"
 GIT_BASH_EXECUTABLE = r"C:\Program Files\Git\bin\bash.exe"
 LOG_DIRECTORY = Path("C:/dd-logs")
+SUPERVISOR_LOG = LOG_DIRECTORY / "supervisor.log"
 CHECK_INTERVAL_SECONDS = 3
 RECURRENCE_WINDOW_SECONDS = 60 * 60
 WARNING_DURATION_SECONDS = 60 * 60
@@ -128,8 +129,22 @@ def send_failure_level(service: Service, value: int) -> None:
     except (OSError, ValueError) as error:
         print(f"[Datadog] could not send failure_level metric: {error}", file=sys.stderr)
 
+def supervisor_log(level: str, message: str) -> None:
+    """Print and persist a structured supervisor event for Datadog."""
+    line = (
+        f"level={level} service=supervisor env=school version=1.0.0 "
+        f"team=bj_xsolla-school-group-dongxue {message}"
+    )
+    print(line, flush=True)
+    try:
+        LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+        with SUPERVISOR_LOG.open("a", encoding="utf-8") as log_file:
+            log_file.write(line + "\n")
+    except OSError as error:
+        print(f"[supervisor] could not write {SUPERVISOR_LOG}: {error}", file=sys.stderr)
+
 def start_service(service: Service) -> None:
-    print(f"[{service.name}] starting: {service.command}")
+    supervisor_log("INFO", f"component={service.name} event=starting command={service.command!r}")
     environment = os.environ | service.environment
     if platform.system() == "Windows":
         LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -218,8 +233,11 @@ def supervise() -> int:
                     previous_failure is not None
                     and current_time - previous_failure <= RECURRENCE_WINDOW_SECONDS
                 )
-                level = "error" if repeated_within_window else "warning"
-                print(f"[{format_now()}] [{level.upper()}] {service.name}: {reason}", file=sys.stderr)
+                level = "ERROR" if repeated_within_window else "WARNING"
+                supervisor_log(
+                    level,
+                    f"component={service.name} event=unhealthy reason={reason!r}",
+                )
                 if repeated_within_window:
                     warning_until.pop(service.name, None)
                     send_failure_level(service, 2)
@@ -231,14 +249,15 @@ def supervise() -> int:
                 stop_service(service)
                 if repeated_within_window:
                     restart_disabled.add(service.name)
-                    print(
-                        f"[{service.name}] automatic restart disabled after two failures within one hour.",
-                        file=sys.stderr,
+                    supervisor_log(
+                        "ERROR",
+                        f"component={service.name} event=restart_disabled "
+                        "reason=two_failures_within_one_hour",
                     )
                     continue
                 start_service(service)
     except KeyboardInterrupt:
-        print("\nStopping supervised services...")
+        supervisor_log("INFO", "event=stopping")
         return 0
     finally:
         for service in SERVICES:
