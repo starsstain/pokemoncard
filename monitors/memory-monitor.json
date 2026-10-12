@@ -5,7 +5,7 @@
   "message": "{{#is_alert}}🟡 可用内存持续不足：15 分钟内低于 10%，当前 {{value}}。\n注意：Windows 上内存指标用 system.mem.pct_usable（可用率），不存在 system.mem.pct。排查：Processes 面板看内存占用进程。{{/is_alert}}\n{{#is_recovery}}✅ 内存已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
-    "service:pokemoncard",
+    "service:health",
     "team:bj-xsolla-school-group-2",
     "version:1.0.0"
   ],

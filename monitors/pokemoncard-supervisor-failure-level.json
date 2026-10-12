@@ -5,7 +5,7 @@
   "message": "{{#is_warning}}\n⚠️ Warning: {{component.name}} terminal exited on {{host.name}}.\nfailure_level: {{value}}\nThe supervisor is retrying the service.\n{{/is_warning}}\n\n{{#is_alert}}\n🚨 Error: {{component.name}} terminal failed twice within one hour on {{host.name}}.\nfailure_level: {{value}}\nAutomatic restart has been disabled. Please investigate.\n{{/is_alert}}\n\n{{#is_recovery}}\n✅ Recovered: {{component.name}} terminal monitor is back to normal on {{host.name}}.\n{{/is_recovery}}\n\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
-    "service:pokemoncard",
+    "service:health",
     "team:bj-xsolla-school-group-2",
     "source:local-supervisor",
     "managed_by:json",

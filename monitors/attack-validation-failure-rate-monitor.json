@@ -1,11 +1,11 @@
 {
   "name": "[宝可梦] attack校验失败率过高",
   "type": "query alert",
-  "query": "sum(last_5m):(sum:pokemon.attack.validation.count{result:failure,env:school,service:pokemoncard,team:bj-xsolla-school-group-2}.as_count() / sum:pokemon.attack.validation.count{env:school,service:pokemoncard,team:bj-xsolla-school-group-2}.as_count()) > 0.2",
-  "message": "{{#is_alert}}🔴 [宝可梦] attack 校验失败率过高\n`service:pokemoncard` `env:school` 过去 5 分钟内 `pokemon.attack.validation.count` 的失败率为 {{value}}，超过阈值（{{threshold}}）。\n服务存活但业务逻辑失败（attack 返回 422），请检查 attack 校验逻辑及近期发布。{{/is_alert}}\n{{#is_recovery}}✅ [宝可梦] attack 校验失败率已恢复正常（当前 {{value}}）。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "query": "sum(last_5m):(sum:pokemon.attack.validation.count{result:failure,env:school,service:attack,team:bj-xsolla-school-group-2}.as_count() / sum:pokemon.attack.validation.count{env:school,service:attack,team:bj-xsolla-school-group-2}.as_count()) > 0.2",
+  "message": "{{#is_alert}}🔴 [宝可梦] attack 校验失败率过高\n`service:attack` `env:school` 过去 5 分钟内 `pokemon.attack.validation.count` 的失败率为 {{value}}，超过阈值（{{threshold}}）。\n服务存活但业务逻辑失败（attack 返回 422），请检查 attack 校验逻辑及近期发布。{{/is_alert}}\n{{#is_recovery}}✅ [宝可梦] attack 校验失败率已恢复正常（当前 {{value}}）。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
-    "service:pokemoncard",
+    "service:attack",
     "team:bj-xsolla-school-group-2",
     "version:1.0.0"
   ],

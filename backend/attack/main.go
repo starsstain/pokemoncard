@@ -125,7 +125,7 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 				"result:" + result,
 				"env:school",
 				"version:1.0.0",
-				"service:pokemoncard",
+				"service:attack",
 				"team:bj-xsolla-school-group-2",
 			}, 1)
 		}
