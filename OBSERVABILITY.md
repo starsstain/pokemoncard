@@ -29,7 +29,7 @@ battle（:8080）───HTTP───▶ attack（:8081）
 
 RUM 配置了针对 `http://127.0.0.1:8080` 的分布式追踪传播（`tracecontext` 与 `datadog`，采样率 100%）。要从 RUM 资源事件跳转到后端 trace，Datadog RUM 应用需允许浏览器当前来源；battle 的 CORS 响应需允许 trace 请求头；后端还需启用 Datadog APM HTTP instrumentation 并将收到的上下文传播到 attack。**此关联是否可用取决于上述后端及来源配置；仅有前端 RUM 初始化不代表 RUM→trace 已验证。**
 
-统一标签：`env:school`、`service:pokemoncard`、`version:1.0.0`、`team:bj_xsolla-school-group-dongxue`，所有信号（trace/log/metric）均带以上标签。
+统一标签：`env:school`、`service:pokemoncard`、`version:1.0.0`、`team:bj-xsolla-school-group-2`，所有信号（trace/log/metric）均带以上标签。
 
 ## 监控表
 
@@ -43,9 +43,10 @@ RUM 配置了针对 `http://127.0.0.1:8080` 的分布式追踪传播（`tracecon
 | 程序内部异常 | 错误（严重） | 5 分钟内"内部异常"日志 > 0 条 | panic 是崩溃路径，比 5xx 更严重，出现即报 | Slack |
 | CPU 持续过高 | 资源饱和 | > 95% 持续 15 分钟 | 防误报设计：个人电脑有游戏/编译等短时飙高，持续超标才算异常 | Slack |
 | 内存可用不足 | 资源饱和 | 可用率 < 10% 持续 15 分钟 | Windows 上用 system.mem.pct_usable（无 system.mem.pct） | Slack |
+| 磁盘空间不足 | 资源饱和 | 磁盘使用率 > 90% | 磁盘满会导致日志/数据写入失败，服务异常 | Slack |
 | P95 延迟过高 | 延迟 SLO | p95 > 500ms | battle 调 attack 的客户端超时即 500ms，P95 破线说明大量请求在等超时（典型：attack 变慢） | Slack |
 | attack 校验失败率过高 | 业务结果 | 5 分钟内 `pokemon.attack.validation.count` 失败率 > 20% | 服务存活但业务逻辑失败（attack 返回 422），健康检查测不到，需独立监控 | Slack |
-| 前端 JS 异常 | 前端（RUM） | 5 分钟内 RUM error 事件 > 5 条 | 前端报错用户直接感知，扎堆出现说明版本有问题 | Slack |
+| 前端 RUM 错误 | 前端（RUM） | 5 分钟内 RUM error 事件 > 4 条 | 前端 JS 报错用户直接感知，扎堆出现说明版本有问题 | Slack |
 | supervisor 进程故障级别 | 进程/心跳 | `pokemoncard.supervisor.failure_level` > 0 | 进程挂掉或反复重启时 supervisor 上报，覆盖进程退出和反复崩溃 | Slack |
 
 ## 文件结构
@@ -69,7 +70,7 @@ monitors/                   # 监控器定义（as-code，与线上监控器一�
   rum-frontend-error-monitor.json     # ↔ 线上：前端JS异常
 ```
 
-> 注：「程序内部异常」监控器为 DataDog UI 创建，无对应 JSON。
+> 注：「程序内部异常」和「磁盘空间不足」为 DataDog UI 创建，无对应 JSON。
 
 ## 应用监控器
 
