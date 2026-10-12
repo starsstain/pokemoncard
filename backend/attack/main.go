@@ -93,6 +93,7 @@ func newHandler(devMode bool) http.Handler {
 		routes[devTimeoutPath] = handleDev
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r = r.WithContext(observability.NewRequestErrorContext(r.Context()))
 		//查找当前请求路径在不在路由表里
 		if handler, exists := routes[r.URL.Path]; exists {
 			handler(w, r)

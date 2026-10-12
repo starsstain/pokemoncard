@@ -2,8 +2,11 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"time"
+
+	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/observability"
 )
 
 const (
@@ -40,6 +43,9 @@ func handleDev(w http.ResponseWriter, r *http.Request) {
 
 // writeDevStatus 只写状态码并记录日志，保持响应体为空。
 func writeDevStatus(w http.ResponseWriter, r *http.Request, status int) {
+	if status >= http.StatusInternalServerError {
+		observability.RecordRequestError(r.Context(), "development_fault", fmt.Errorf("development endpoint returned HTTP %d", status))
+	}
 	w.WriteHeader(status)
 	logRequest(r, status)
 }

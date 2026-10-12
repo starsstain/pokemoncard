@@ -34,11 +34,10 @@ func TestDevRouting(t *testing.T) {
 				response := httptest.NewRecorder()
 				handler.ServeHTTP(response, request)
 				want := 404
-				if enabled {
+				if method == "OPTIONS" {
+					want = 204
+				} else if enabled {
 					want = 405
-					if method == "OPTIONS" {
-						want = 204
-					}
 				}
 				checkResponse(t, response, want)
 				if want == 405 && response.Header().Get("Allow") != "POST" {
