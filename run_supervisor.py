@@ -23,8 +23,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 BACKEND = ROOT / "backend"
 STATE_FILE = ROOT / ".pokemon_supervisor_state.json"
-LOG_DIR = Path("C:/dd-logs")
-SUPERVISOR_LOG = LOG_DIR / "supervisor.log"
+GIT_BASH_EXECUTABLE = r"C:\Program Files\Git\bin\bash.exe"
+LOG_DIRECTORY = Path("C:/dd-logs")
 CHECK_INTERVAL_SECONDS = 3
 RECURRENCE_WINDOW_SECONDS = 60 * 60
 WARNING_DURATION_SECONDS = 60 * 60
@@ -128,41 +128,32 @@ def send_failure_level(service: Service, value: int) -> None:
     except (OSError, ValueError) as error:
         print(f"[Datadog] could not send failure_level metric: {error}", file=sys.stderr)
 
-def ensure_log_dir() -> None:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def supervisor_log(level: str, message: str) -> None:
-    """Print to console and append a structured line to supervisor.log for Datadog."""
-    line = (
-        f"level={level} service=supervisor env=school version=1.0.0 "
-        f"team=bj_xsolla-school-group-dongxue {message}"
-    )
-    print(line)
-    try:
-        with open(SUPERVISOR_LOG, "a", encoding="utf-8") as log_file:
-            log_file.write(line + "\n")
-    except OSError:
-        pass
-
-
 def start_service(service: Service) -> None:
-    supervisor_log("INFO", f"[{service.name}] starting: {service.command}")
+    print(f"[{service.name}] starting: {service.command}")
     environment = os.environ | service.environment
-    log_path = LOG_DIR / f"{service.name}.log"
     if platform.system() == "Windows":
-        # cmd exits with the service, so the separate console closes on a crash.
-        # Redirect output to a log file so the Datadog Agent can collect it.
+        LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
+
+        bash_log_file = f"/c/dd-logs/{service.name}.log"
+        bash_command = (
+            f"({service.command}) 2>&1 | tee -a '{bash_log_file}'"
+        )
+
         service.process = subprocess.Popen(
-            ["cmd.exe", "/d", "/s", "/c",
-             f"title PokemonCard - {service.name} && {service.command} >> {log_path} 2>&1"],
+            [
+                GIT_BASH_EXECUTABLE,
+                "--noprofile",
+                "--norc",
+                "-lc",
+                bash_command,
+            ],
             cwd=service.cwd,
             env=environment,
             creationflags=subprocess.CREATE_NEW_CONSOLE,
         )
     else:
         service.process = subprocess.Popen(
-            f"{service.command} >> {log_path} 2>&1",
+            service.command,
             cwd=service.cwd,
             env=environment,
             shell=True,
@@ -198,7 +189,6 @@ def format_now() -> str:
 
 
 def supervise() -> int:
-    ensure_log_dir()
     last_failure_at, warning_until = load_state()
     restart_disabled: set[str] = set()
     for service in SERVICES:
@@ -228,8 +218,8 @@ def supervise() -> int:
                     previous_failure is not None
                     and current_time - previous_failure <= RECURRENCE_WINDOW_SECONDS
                 )
-                level = "ERROR" if repeated_within_window else "WARN"
-                supervisor_log(level, f"[{service.name}] {reason}")
+                level = "error" if repeated_within_window else "warning"
+                print(f"[{format_now()}] [{level.upper()}] {service.name}: {reason}", file=sys.stderr)
                 if repeated_within_window:
                     warning_until.pop(service.name, None)
                     send_failure_level(service, 2)
@@ -241,11 +231,14 @@ def supervise() -> int:
                 stop_service(service)
                 if repeated_within_window:
                     restart_disabled.add(service.name)
-                    supervisor_log("ERROR", f"[{service.name}] automatic restart disabled after two failures within one hour.")
+                    print(
+                        f"[{service.name}] automatic restart disabled after two failures within one hour.",
+                        file=sys.stderr,
+                    )
                     continue
                 start_service(service)
     except KeyboardInterrupt:
-        supervisor_log("INFO", "Stopping supervised services...")
+        print("\nStopping supervised services...")
         return 0
     finally:
         for service in SERVICES:
