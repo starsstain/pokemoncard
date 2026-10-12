@@ -73,7 +73,7 @@ func logWithTrace(r *http.Request, level, msg string, args ...any) {
 	if ok {
 		traceID = fmt.Sprintf("%d", span.Context().TraceID())
 	}
-	prefix := fmt.Sprintf("level=%s service=attack dd.trace_id=%s ", level, traceID)
+	prefix := fmt.Sprintf("level=%s service=attack env=school version=1.0.0 team=bj_xsolla-school-group-dongxue dd.trace_id=%s ", level, traceID)
 	log.Printf(prefix+msg, args...)
 }
 
@@ -108,13 +108,19 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(status)
 		logWithTrace(r, "INFO", "attack method=%s path=%s status=%d", r.Method, r.URL.Path, status)
-		// 业务指标：按结果计数，result=success|failure。
+		// 业务指标：按结果计数，result=success|failure，并带统一标签供 Datadog 筛选。
 		if statsdClient != nil {
 			result := "success"
 			if status >= 400 {
 				result = "failure"
 			}
-			_ = statsdClient.Incr("pokemon.attack.validation.count", []string{"result:" + result}, 1)
+			_ = statsdClient.Incr("pokemon.attack.validation.count", []string{
+				"result:" + result,
+				"env:school",
+				"version:1.0.0",
+				"service:pokemoncard",
+				"team:bj_xsolla-school-group-dongxue",
+			}, 1)
 		}
 	}()
 	//请求校验
