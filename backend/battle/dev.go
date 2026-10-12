@@ -2,10 +2,13 @@
 package main
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
 	"strings"
+
+	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/observability"
 )
 
 // registerDevRoutes 只在开发模式调用；路由表在启动后不再修改。
@@ -24,6 +27,7 @@ func registerDevRoutes(routes map[string]func(*http.Request) int, client *http.C
 	} {
 		routes[scenario.path] = func(r *http.Request) int {
 			if scenario.localStatus != 0 {
+				observability.RecordRequestError(r.Context(), "development_fault", fmt.Errorf("development endpoint returned HTTP %d", scenario.localStatus))
 				return scenario.localStatus // 502、503 不调用 attack。
 			}
 			target := attackURL

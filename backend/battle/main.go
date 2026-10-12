@@ -84,26 +84,30 @@ func newHandler(attackURL string, devMode bool) http.Handler {
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		status := http.StatusInternalServerError
+		r = r.WithContext(observability.NewRequestErrorContext(r.Context()))
 		setCORSHeaders(w)
 		defer func() {
 			if problem := recover(); problem != nil {
 				status = http.StatusInternalServerError
+				observability.RecordRequestError(r.Context(), "internal_error", fmt.Errorf("battle panic: %v", problem))
 				logWithTrace(r, "ERROR", "battle 内部异常：%v", problem)
 			}
 			w.WriteHeader(status)
 			logRequest(r, status)
 		}()
-		handler, exists := routes[r.URL.Path]
-		if !exists {
-			status = http.StatusNotFound
-			return
-		}
 		if r.Method == http.MethodOptions {
 			status = http.StatusNoContent
 			return
 		}
+		handler, exists := routes[r.URL.Path]
+		if !exists {
+			observability.RecordRequestError(r.Context(), "route_not_found", fmt.Errorf("route not found: %s", r.URL.Path))
+			status = http.StatusNotFound
+			return
+		}
 		if r.Method != http.MethodPost {
 			w.Header().Set("Allow", http.MethodPost)
+			observability.RecordRequestError(r.Context(), "method_not_allowed", fmt.Errorf("method %s is not allowed", r.Method))
 			status = http.StatusMethodNotAllowed
 			return
 		}
@@ -117,6 +121,7 @@ func forwardValidation(client *http.Client, attackURL string, r *http.Request) i
 	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, attackURL, r.Body)
 	if err != nil {
 		logWithTrace(r, "ERROR", "could not create forwarded request: %v", err)
+		observability.RecordRequestError(r.Context(), "internal_error", fmt.Errorf("could not create forwarded request: %w", err))
 		return http.StatusInternalServerError
 	}
 	request.ContentLength = r.ContentLength
@@ -130,9 +135,14 @@ func forwardRequest(client *http.Client, request *http.Request) int {
 	response, err := client.Do(request)
 	if err != nil {
 		observability.Log(request.Context(), "battle", "error", "attack request failed", observability.Fields{"error.message": err.Error()})
-		return forwardingStatus(err)
+		status := forwardingStatus(err)
+		observability.RecordRequestError(request.Context(), forwardingErrorKind(status), err)
+		return status
 	}
 	defer response.Body.Close()
+	if response.StatusCode >= http.StatusBadRequest {
+		observability.RecordRequestError(request.Context(), "upstream_http_error", fmt.Errorf("attack returned HTTP %d", response.StatusCode))
+	}
 	return response.StatusCode
 }
 
@@ -147,6 +157,17 @@ func forwardingStatus(err error) int {
 		return http.StatusServiceUnavailable
 	}
 	return http.StatusBadGateway
+}
+
+func forwardingErrorKind(status int) string {
+	switch status {
+	case http.StatusGatewayTimeout:
+		return "upstream_timeout"
+	case http.StatusServiceUnavailable:
+		return "upstream_unavailable"
+	default:
+		return "upstream_error"
+	}
 }
 
 func setCORSHeaders(w http.ResponseWriter) {
