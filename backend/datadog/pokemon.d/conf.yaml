@@ -1,0 +1,22 @@
+# 日志采集：run_supervisor.py 会把 battle/attack/supervisor 的输出重定向到 C:/dd-logs/。
+logs:
+  - type: file
+    path: C:/dd-logs/battle.log
+    service: battle
+    source: pokemon-battle
+    tags:
+      - team:bj_xsolla-school-group-dongxue
+
+  - type: file
+    path: C:/dd-logs/attack.log
+    service: attack
+    source: pokemon-attack
+    tags:
+      - team:bj_xsolla-school-group-dongxue
+
+  - type: file
+    path: C:/dd-logs/supervisor.log
+    service: supervisor
+    source: pokemon-supervisor
+    tags:
+      - team:bj_xsolla-school-group-dongxue

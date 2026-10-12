@@ -3,11 +3,14 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
 	"time"
 
+	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
+	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/config"
 )
 
@@ -22,17 +25,44 @@ func main() {
 	log.Printf("battle 开发接口开启=%t", settings.DevMode)
 	const address = "127.0.0.1:8080"
 	const attackURL = "http://127.0.0.1:8081/internal/v1/attack-validations"
+	// APM：启动 Datadog 追踪器，与 attack 串成一条分布式 trace。
+	// 显式写 IPv4 地址：Windows 上默认 localhost 先解析为 ::1，Agent 只监听 IPv4。
+	tracer.Start(
+		tracer.WithService("battle"),
+		tracer.WithEnv("school"),
+		tracer.WithAgentAddr("127.0.0.1:8126"),
+		tracer.WithGlobalTag("version", "1.0.0"),
+		tracer.WithGlobalTag("env", "school"),
+		tracer.WithGlobalTag("team", "bj_xsolla-school-group-dongxue"),
+	)
+	defer tracer.Stop()
 	log.Printf("battle 正在监听 http://%s%s", address, validationPath)
-	log.Fatal(http.ListenAndServe(address, newHandler(attackURL, settings.DevMode)))
+	wrapped := ddhttp.WrapHandler(newHandler(attackURL, settings.DevMode), "battle", validationPath)
+	// log.Fatal 会跳过 defer，须先手动 Stop 刷出缓冲中的 trace 再退出。
+	if err := http.ListenAndServe(address, wrapped); err != nil {
+		tracer.Stop()
+		log.Fatal(err)
+	}
+}
+
+// logWithTrace 输出带 dd.trace_id 的结构化日志，实现 log↔trace 互跳。
+func logWithTrace(r *http.Request, level, msg string, args ...any) {
+	span, ok := tracer.SpanFromContext(r.Context())
+	var traceID string
+	if ok {
+		traceID = fmt.Sprintf("%d", span.Context().TraceID())
+	}
+	prefix := fmt.Sprintf("level=%s service=battle env=school version=1.0.0 team=bj_xsolla-school-group-dongxue dd.trace_id=%s ", level, traceID)
+	log.Printf(prefix+msg, args...)
 }
 
 // newHandler 创建转发处理器；传入 attack 地址，方便测试使用临时服务。
 func newHandler(attackURL string, devMode bool) http.Handler {
-	client := &http.Client{
+	client := ddhttp.WrapClient(&http.Client{
 		Timeout: 500 * time.Millisecond,
 		// 不跟随重定向，保持 attack 返回的状态码，不额外发送请求。
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
+	})
 	// 所有路由共用方法检查、日志、空响应体和同一个 500ms HTTP 客户端。
 	routes := map[string]func(*http.Request) int{
 		validationPath: func(r *http.Request) int { return forwardValidation(client, attackURL, r) },
@@ -46,10 +76,10 @@ func newHandler(attackURL string, devMode bool) http.Handler {
 		defer func() {
 			if problem := recover(); problem != nil {
 				status = http.StatusInternalServerError
-				log.Printf("battle 内部异常：%v", problem)
+				logWithTrace(r, "ERROR", "battle 内部异常：%v", problem)
 			}
 			w.WriteHeader(status)
-			log.Printf("battle method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+			logWithTrace(r, "INFO", "battle method=%s path=%s status=%d", r.Method, r.URL.Path, status)
 		}()
 		handler, exists := routes[r.URL.Path]
 		if !exists {
