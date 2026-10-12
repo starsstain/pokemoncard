@@ -5,15 +5,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+
 	"mime"
 	"net/http"
+	"strings"
 
 	"github.com/DataDog/datadog-go/v5/statsd"
 	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
 
 	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/config"
+	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/observability"
 )
 
 const validationPath = "/internal/v1/attack-validations"
@@ -32,7 +34,7 @@ func mustStatsd() *statsd.Client {
 	c, err := statsd.New("127.0.0.1:8125")
 	if err != nil {
 		// 指标上报失败不影响服务启动，降级为 no-op。
-		log.Printf("attack statsd 初始化失败，指标不上报：%v", err)
+		observability.Log(nil, "attack", "warn", "attack statsd 初始化失败，指标不上报", observability.Fields{"error.message": err.Error()})
 		return nil
 	}
 	return c
@@ -41,9 +43,10 @@ func mustStatsd() *statsd.Client {
 func main() {
 	settings, err := config.Load(".env")
 	if err != nil {
-		log.Fatal(err)
+		observability.Log(nil, "attack", "error", "could not load configuration", observability.Fields{"error.message": err.Error()})
+		return
 	}
-	log.Printf("attack 开发接口开启=%t", settings.DevMode)
+	observability.Log(nil, "attack", "info", "attack development interface status", observability.Fields{"app.dev_mode": settings.DevMode})
 	const address = "127.0.0.1:8081"
 	// APM：启动 Datadog 追踪器，trace 数据经本机 Agent（8126 端口）上报。
 	// 显式写 IPv4 地址：Windows 上默认 localhost 先解析为 ::1，Agent 只监听 IPv4。
@@ -53,27 +56,32 @@ func main() {
 		tracer.WithAgentAddr("127.0.0.1:8126"),
 		tracer.WithGlobalTag("version", "1.0.0"),
 		tracer.WithGlobalTag("env", "school"),
-		tracer.WithGlobalTag("team", "bj_xsolla-school-group-dongxue"),
+		tracer.WithGlobalTag("team", observability.Team),
 	)
 	defer tracer.Stop()
-	log.Printf("attack 正在监听 http://%s%s", address, validationPath)
+	observability.Log(nil, "attack", "info", "attack listening", observability.Fields{"network.address": address, "http.route": validationPath})
 	wrapped := ddhttp.WrapHandler(newHandler(settings.DevMode), "attack", validationPath)
 	// log.Fatal 会跳过 defer，须先手动 Stop 刷出缓冲中的 trace 再退出。
 	if err := http.ListenAndServe(address, wrapped); err != nil {
 		tracer.Stop()
-		log.Fatal(err)
+		observability.Log(nil, "attack", "error", "attack server stopped", observability.Fields{"error.message": err.Error()})
 	}
 }
 
 // logWithTrace 输出带 dd.trace_id 的结构化日志，实现 log↔trace 互跳。
 func logWithTrace(r *http.Request, level, msg string, args ...any) {
-	span, ok := tracer.SpanFromContext(r.Context())
-	var traceID string
-	if ok {
-		traceID = fmt.Sprintf("%d", span.Context().TraceID())
-	}
-	prefix := fmt.Sprintf("level=%s service=attack env=school version=1.0.0 team=bj_xsolla-school-group-dongxue dd.trace_id=%s ", level, traceID)
-	log.Printf(prefix+msg, args...)
+	observability.Log(r.Context(), "attack", strings.ToLower(level), fmt.Sprintf(msg, args...), observability.Fields{
+		"http.method":           r.Method,
+		"http.url_details.path": r.URL.Path,
+	})
+}
+
+func logRequest(r *http.Request, statusCode int) {
+	observability.Log(r.Context(), "attack", observability.StatusForHTTP(statusCode), "request completed", observability.Fields{
+		"http.method":           r.Method,
+		"http.url_details.path": r.URL.Path,
+		"http.status_code":      statusCode,
+	})
 }
 
 // newHandler 在启动时建立路由表；非开发模式不注册开发路径。
@@ -92,7 +100,7 @@ func newHandler(devMode bool) http.Handler {
 		}
 		// 未注册路径直接返回空的 404，不使用会附带文字的默认错误页。
 		w.WriteHeader(http.StatusNotFound)
-		log.Printf("attack method=%s path=%s status=%d", r.Method, r.URL.Path, http.StatusNotFound)
+		logRequest(r, http.StatusNotFound)
 	})
 }
 
@@ -106,7 +114,7 @@ func handleValidation(w http.ResponseWriter, r *http.Request) {
 			logWithTrace(r, "ERROR", "attack 内部异常：%v", problem)
 		}
 		w.WriteHeader(status)
-		logWithTrace(r, "INFO", "attack method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+		logRequest(r, status)
 		// 业务指标：按结果计数，result=success|failure，并带统一标签供 Datadog 筛选。
 		if statsdClient != nil {
 			result := "success"

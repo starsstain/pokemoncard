@@ -2,7 +2,6 @@
 package main
 
 import (
-	"log"
 	"net/http"
 	"time"
 )
@@ -32,7 +31,7 @@ func handleDev(w http.ResponseWriter, r *http.Request) {
 			status = http.StatusOK
 		case <-r.Context().Done():
 			// battle 超时或断开后停止等待，不记录成一次成功响应。
-			log.Printf("attack method=%s path=%s 请求已取消", r.Method, r.URL.Path)
+			logWithTrace(r, "WARN", "request cancelled")
 			return
 		}
 	}
@@ -42,5 +41,5 @@ func handleDev(w http.ResponseWriter, r *http.Request) {
 // writeDevStatus 只写状态码并记录日志，保持响应体为空。
 func writeDevStatus(w http.ResponseWriter, r *http.Request, status int) {
 	w.WriteHeader(status)
-	log.Printf("attack method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+	logRequest(r, status)
 }
