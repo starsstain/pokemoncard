@@ -130,16 +130,25 @@ def send_failure_level(service: Service, value: int) -> None:
         print(f"[Datadog] could not send failure_level metric: {error}", file=sys.stderr)
 
 def supervisor_log(level: str, message: str) -> None:
-    """Print and persist a structured supervisor event for Datadog."""
-    line = (
-        f"level={level} service=supervisor env=school version=1.0.0 "
-        f"team=bj_xsolla-school-group-dongxue {message}"
+    """Emit a Datadog-compatible JSON log record."""
+    status = {"ERROR": "error", "WARNING": "warn"}.get(level, "info")
+    record = json.dumps(
+        {
+            "timestamp": format_now(),
+            "status": status,
+            "service": "supervisor",
+            "env": "school",
+            "version": "1.0.0",
+            "team": "bj-xsolla-school-group-2",
+            "message": message,
+        },
+        ensure_ascii=False,
     )
-    print(line, flush=True)
+    print(record, flush=True)
     try:
         LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
         with SUPERVISOR_LOG.open("a", encoding="utf-8") as log_file:
-            log_file.write(line + "\n")
+            log_file.write(record + "\n")
     except OSError as error:
         print(f"[supervisor] could not write {SUPERVISOR_LOG}: {error}", file=sys.stderr)
 

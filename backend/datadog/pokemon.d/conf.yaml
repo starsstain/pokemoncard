@@ -5,6 +5,8 @@ logs:
     service: battle
     source: pokemon-battle
     tags:
+      - env:school
+      - version:1.0.0
       - team:bj-xsolla-school-group-2
 
   - type: file
@@ -12,6 +14,8 @@ logs:
     service: attack
     source: pokemon-attack
     tags:
+      - env:school
+      - version:1.0.0
       - team:bj-xsolla-school-group-2
 
   - type: file
@@ -19,4 +23,6 @@ logs:
     service: supervisor
     source: pokemon-supervisor
     tags:
+      - env:school
+      - version:1.0.0
       - team:bj-xsolla-school-group-2

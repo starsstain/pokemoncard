@@ -3,7 +3,6 @@ package main
 
 import (
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,7 +30,7 @@ func registerDevRoutes(routes map[string]func(*http.Request) int, client *http.C
 			if scenario.attackPath != "" {
 				base, err := url.Parse(attackURL)
 				if err != nil {
-					log.Printf("battle 解析 attack 地址失败：%v", err)
+					logWithTrace(r, "ERROR", "could not parse attack URL: %v", err)
 					return http.StatusInternalServerError
 				}
 				// 使用配置的 attack 主机，替换为内部开发路径。
@@ -44,7 +43,7 @@ func registerDevRoutes(routes map[string]func(*http.Request) int, client *http.C
 			// 请求内容由后端固定准备，不使用前端传来的 body 或故障请求头。
 			request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target, body)
 			if err != nil {
-				log.Printf("battle 创建开发请求失败：%v", err)
+				logWithTrace(r, "ERROR", "could not create development request: %v", err)
 				return http.StatusInternalServerError
 			}
 			if scenario.body != "" {

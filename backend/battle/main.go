@@ -4,14 +4,16 @@ package main
 import (
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	ddhttp "gopkg.in/DataDog/dd-trace-go.v1/contrib/net/http"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
 	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/config"
+	"school-gitlab.xsolla.dev/yijun_gao/pokemoncard/backend/internal/observability"
 )
 
 const validationPath = "/api/v1/attack-validations"
@@ -24,9 +26,10 @@ const corsAllowedHeaders = "Content-Type, traceparent, tracestate, baggage, x-da
 func main() {
 	settings, err := config.Load(".env")
 	if err != nil {
-		log.Fatal(err)
+		observability.Log(nil, "battle", "error", "could not load configuration", observability.Fields{"error.message": err.Error()})
+		return
 	}
-	log.Printf("battle 开发接口开启=%t", settings.DevMode)
+	observability.Log(nil, "battle", "info", "battle development interface status", observability.Fields{"app.dev_mode": settings.DevMode})
 	const address = "127.0.0.1:8080"
 	const attackURL = "http://127.0.0.1:8081/internal/v1/attack-validations"
 	// APM：启动 Datadog 追踪器，与 attack 串成一条分布式 trace。
@@ -37,27 +40,32 @@ func main() {
 		tracer.WithAgentAddr("127.0.0.1:8126"),
 		tracer.WithGlobalTag("version", "1.0.0"),
 		tracer.WithGlobalTag("env", "school"),
-		tracer.WithGlobalTag("team", "bj_xsolla-school-group-dongxue"),
+		tracer.WithGlobalTag("team", observability.Team),
 	)
 	defer tracer.Stop()
-	log.Printf("battle 正在监听 http://%s%s", address, validationPath)
+	observability.Log(nil, "battle", "info", "battle listening", observability.Fields{"network.address": address, "http.route": validationPath})
 	wrapped := ddhttp.WrapHandler(newHandler(attackURL, settings.DevMode), "battle", validationPath)
 	// log.Fatal 会跳过 defer，须先手动 Stop 刷出缓冲中的 trace 再退出。
 	if err := http.ListenAndServe(address, wrapped); err != nil {
 		tracer.Stop()
-		log.Fatal(err)
+		observability.Log(nil, "battle", "error", "battle server stopped", observability.Fields{"error.message": err.Error()})
 	}
 }
 
 // logWithTrace 输出带 dd.trace_id 的结构化日志，实现 log↔trace 互跳。
 func logWithTrace(r *http.Request, level, msg string, args ...any) {
-	span, ok := tracer.SpanFromContext(r.Context())
-	var traceID string
-	if ok {
-		traceID = fmt.Sprintf("%d", span.Context().TraceID())
-	}
-	prefix := fmt.Sprintf("level=%s service=battle env=school version=1.0.0 team=bj_xsolla-school-group-dongxue dd.trace_id=%s ", level, traceID)
-	log.Printf(prefix+msg, args...)
+	observability.Log(r.Context(), "battle", strings.ToLower(level), fmt.Sprintf(msg, args...), observability.Fields{
+		"http.method":           r.Method,
+		"http.url_details.path": r.URL.Path,
+	})
+}
+
+func logRequest(r *http.Request, statusCode int) {
+	observability.Log(r.Context(), "battle", observability.StatusForHTTP(statusCode), "request completed", observability.Fields{
+		"http.method":           r.Method,
+		"http.url_details.path": r.URL.Path,
+		"http.status_code":      statusCode,
+	})
 }
 
 // newHandler 创建转发处理器；传入 attack 地址，方便测试使用临时服务。
@@ -83,7 +91,7 @@ func newHandler(attackURL string, devMode bool) http.Handler {
 				logWithTrace(r, "ERROR", "battle 内部异常：%v", problem)
 			}
 			w.WriteHeader(status)
-			logWithTrace(r, "INFO", "battle method=%s path=%s status=%d", r.Method, r.URL.Path, status)
+			logRequest(r, status)
 		}()
 		handler, exists := routes[r.URL.Path]
 		if !exists {
@@ -108,7 +116,7 @@ func newHandler(attackURL string, devMode bool) http.Handler {
 func forwardValidation(client *http.Client, attackURL string, r *http.Request) int {
 	request, err := http.NewRequestWithContext(r.Context(), http.MethodPost, attackURL, r.Body)
 	if err != nil {
-		log.Printf("battle 创建转发请求失败：%v", err)
+		logWithTrace(r, "ERROR", "could not create forwarded request: %v", err)
 		return http.StatusInternalServerError
 	}
 	request.ContentLength = r.ContentLength
@@ -121,7 +129,7 @@ func forwardRequest(client *http.Client, request *http.Request) int {
 	request.GetBody = nil // 禁用请求体重放，开发请求也不自动重试。
 	response, err := client.Do(request)
 	if err != nil {
-		log.Printf("battle 调用 attack 失败：%v", err)
+		observability.Log(request.Context(), "battle", "error", "attack request failed", observability.Fields{"error.message": err.Error()})
 		return forwardingStatus(err)
 	}
 	defer response.Body.Close()
