@@ -1,40 +1,52 @@
-# Pokémon Battle Demo
+# Pokemon Fight
 
-```bash
+[poke.yijungao.com](https://poke.yijungao.com)
+
+一个像素风的宝可梦对战演示项目。玩家点击画面投掷道具协助伊布对战妙蛙种子；前端会按采样频率将攻击伤害提交给后端校验，发现伤害被篡改时会结束本局。
+
+## 技术与功能
+
+- React 18 + Vite：对战画面、血条、投掷动画与开发调试面板。
+- Go 服务：`battle`（`127.0.0.1:8080`）转发请求给 `attack`（`127.0.0.1:8081`）校验三种固定伤害。
+- 可观测性：Datadog RUM、APM Trace、结构化日志、DogStatsD 指标和 Monitor-as-Code。
+
+## 本地启动
+
+需要 Node.js、npm 与 Go 1.26（或兼容版本）。分别打开三个终端：
+
+```powershell
+# 终端 1：前端（项目根目录）
 npm install
 npm run dev
 ```
 
+```powershell
+# 终端 2：攻击校验服务
+cd backend
+go run ./attack
+```
 
-准备做一个类似 宝可梦对战的 游戏，玩家仅仅需要通过鼠标点击来玩这个游戏。
+```powershell
+# 终端 3：网关服务
+cd backend
+go run ./battle
+```
 
-![index](./test.png)
+在 Windows 上运行 `py run_supervisor.py` 可同时监管三个服务。
 
-# 基础玩法
+浏览器打开 Vite 输出的本地地址（通常是 `http://localhost:5173`）。点击对话框开始战斗，再点击左键投掷道具。
 
-每次玩家点击，角色会扔出去一个球，来砸对方的宝可梦造成伤害
+`backend/.env.example` 中的 `APP_ENV=dev` 可开启后端故障演练接口；前端开发模式会显示对应调试面板。
 
-对方的宝可梦和我方的宝可梦会不断的进行撞击。
+## 验证
 
-我方收到的伤害主要来源于对方宝可梦的攻击
+```powershell
+npm test
+cd backend
+go test ./...
+go vet ./...
+```
 
-对方受到的伤害主要来源于角色投掷球砸出来的伤害
+## 可观测性
 
-我方宝可梦伤害很低，主要用来当肉盾
-
-可以有血条，经验值。
-
-升级后，提升玩家的力量和攻击速度，提升我方宝可梦的生命值和一点点攻击力
-
-
-# 其他想法
-
-想做成挂机刷怪类的游戏。
-
-设置 5 个左右的道馆 或者 地区，玩家想玩就猛猛点然后打高级的怪，不想点就去慢慢刷低级的怪。
-
-如果我方宝可梦等级很高的话可以挂机打低等级的宝可梦。
-
-通关之后变成岩石系伊布。
-![final](./final.png)
-
+将 Datadog 配置写入根目录 `.env`（可参考 `.env.example`）即可启用 RUM；服务端 trace、日志、指标、监控定义及同步方式见 [OBSERVABILITY.md](./OBSERVABILITY.md)。后端 API 契约与故障演练说明见 [backend/README.md](./backend/README.md)。
