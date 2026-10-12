@@ -33,8 +33,7 @@ RUM 配置了针对 `http://127.0.0.1:8080` 的分布式追踪传播（`tracecon
 
 ## 监控表
 
-> 全部 7 个已在线上 Datadog 网页中运行（UI 创建、实战验证过告警闭环）；
-> monitors/ 目录下的 JSON 与之一一对应，队友可通过下方命令从 git 复现。
+> monitors/ 目录下共 9 个 JSON，与线上 Datadog 监控器一一对应，队友可通过下方命令从 git 复现。
 
 | 监控器 | 类别 | 阈值 | 理由 | 通知 |
 |--------|------|------|------|------|
@@ -44,8 +43,11 @@ RUM 配置了针对 `http://127.0.0.1:8080` 的分布式追踪传播（`tracecon
 | 程序内部异常 | 错误（严重） | 5 分钟内"内部异常"日志 > 0 条 | panic 是崩溃路径，比 5xx 更严重，出现即报 | Slack |
 | CPU 持续过高 | 资源饱和 | > 95% 持续 15 分钟 | 防误报设计：个人电脑有游戏/编译等短时飙高，持续超标才算异常 | Slack |
 | 内存可用不足 | 资源饱和 | 可用率 < 10% 持续 15 分钟 | Windows 上用 system.mem.pct_usable（无 system.mem.pct） | Slack |
+| 磁盘空间不足 | 资源饱和 | 磁盘使用率 > 90% | 磁盘满会导致日志/数据写入失败，服务异常 | Slack |
 | P95 延迟过高 | 延迟 SLO | p95 > 500ms | battle 调 attack 的客户端超时即 500ms，P95 破线说明大量请求在等超时（典型：attack 变慢） | Slack |
 | attack 校验失败率过高 | 业务结果 | 5 分钟内 `pokemon.attack.validation.count` 失败率 > 20% | 服务存活但业务逻辑失败（attack 返回 422），健康检查测不到，需独立监控 | Slack |
+| 前端 RUM 错误 | 前端（RUM） | 5 分钟内 RUM error 事件 > 4 条 | 前端 JS 报错用户直接感知，扎堆出现说明版本有问题 | Slack |
+| supervisor 进程故障级别 | 进程/心跳 | `pokemoncard.supervisor.failure_level` > 0 | 进程挂掉或反复重启时 supervisor 上报，覆盖进程退出和反复崩溃 | Slack |
 
 ## 文件结构
 
@@ -64,8 +66,11 @@ monitors/                   # 监控器定义（as-code，与线上监控器一�
   memory-monitor.json                 # ↔ 线上：内存可用不足
   battle-latency-p95-monitor.json     # ↔ 线上：P95延迟过高
   attack-validation-failure-rate-monitor.json  # ↔ 线上：attack校验失败率过高
-  pokemoncard-supervisor-failure-level.json  # ↔ 线上：进程退出监控
+  pokemoncard-supervisor-failure-level.json  # ↔ 线上：进程故障级别监控
+  rum-frontend-error-monitor.json     # ↔ 线上：前端JS异常
 ```
+
+> 注：「程序内部异常」和「磁盘空间不足」为 DataDog UI 创建，无对应 JSON。
 
 ## 应用监控器
 
@@ -81,7 +86,7 @@ py sync_datadog_monitor.py             # 实际应用
 
 ### （a）RUM 会话 → 后端 trace → 关联日志 → 业务指标
 
-
+> 待补充：启动服务后在前端操作，在 Datadog 中截取从 RUM 会话跳到后端 trace、再跳到关联日志和业务指标的联动截图。
 
 ### （b）Slack 告警触发与恢复
 
