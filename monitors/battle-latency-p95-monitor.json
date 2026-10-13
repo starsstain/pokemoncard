@@ -2,7 +2,7 @@
   "name": "[宝可梦] P95延迟过高",
   "type": "query alert",
   "query": "avg(last_5m):p95:trace.http.request{service:battle,env:school} > 0.5",
-  "message": "{{#is_alert}}🔴 battle P95 延迟超过 500ms，当前 {{value}}s。\n背景：battle 调 attack 的客户端超时为 500ms，正常请求毫秒级；P95 破 0.5s 说明大量请求在等超时（典型：attack 变慢或故障注入 attack-timeout）。排查：APM→battle→Traces 按耗时排序看慢请求火焰图。{{/is_alert}}\n{{#is_recovery}}✅ P95 延迟已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🔴 battle P95 延迟超过 500ms，当前 {{value}}s。\n背景：battle 调 attack 的客户端超时为 500ms，正常请求毫秒级；P95 破 0.5s 说明大量请求在等超时（典型：attack 变慢或故障注入 attack-timeout）。{{/is_alert}}\n{{#is_recovery}}✅ P95 延迟已恢复。{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [battle 全部请求记录（可看状态码 200/5xx、耗时、接口）](https://us5.datadoghq.com/apm/traces?query=service%3Abattle%20env%3Aschool%20operation_name%3Ahttp.request&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n- [battle 慢请求记录（>500ms，点开看火焰图）](https://us5.datadoghq.com/apm/traces?query=service%3Abattle%20env%3Aschool%20operation_name%3Ahttp.request%20%40duration%3A%3E500ms&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n- [下游 attack 全部请求记录（判断是否 attack 变慢）](https://us5.datadoghq.com/apm/traces?query=service%3Aattack%20env%3Aschool&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
     "service:battle",
