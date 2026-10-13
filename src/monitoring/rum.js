@@ -39,12 +39,3 @@ export function reportRumAction(name, context = {}) {
   if (!isRumEnabled) return;
   datadogRum.addAction(name, context);
 }
-
-// RUM action attributes must stay low-cardinality so they remain useful for
-// generated metrics and dashboard grouping. Never pass user or battle IDs here.
-export const rumBusinessEvents = {
-  battleStart: (context = {}) => reportRumAction("battle_start", context),
-  attackSubmit: (context = {}) => reportRumAction("attack_submit", context),
-  battleEnd: (context = {}) => reportRumAction("battle_end", context),
-  battleReplay: (context = {}) => reportRumAction("battle_replay", context),
-};
