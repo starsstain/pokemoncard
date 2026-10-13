@@ -26,51 +26,24 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
 | **RUM**        | `src/monitoring/rum.js` 初始化 Datadog RUM（`PokemonCardWeb`），从 `.env` 读取应用 ID 和客户端 Token，数据上报至 us5.datadoghq.com。采集页面浏览、用户操作、网络请求和 Long Task；会话采样率为 100%，回放采样率为 20%。统一标签为 `service:pokemon-battle-frontend`、`env:school`、`version:1.0.0` 及 `team`。 |
 
-### RUM 业务动作与看板
 
-前端 `src/monitoring/rum.js` 提供统一业务事件封装，`BattleScene` 在实际开局、抽样攻击校验返回、对局结束和重开时记录动作。所有维度均为低基数枚举；不发送用户 ID、对局 ID 等唯一值。
+### 在 RUM Generate Metrics 创建攻击接口失败率
 
-| RUM action | 属性 | 口径 |
+前端已开启 `trackResources`，RUM 会采集 `fetch`/XHR 资源事件。可在 [RUM Generate Metrics](https://us5.datadoghq.com/rum/generate-metrics) 基于攻击校验 API 的 **Resources** 建立两个 count 指标，再在 Dashboard 用失败数除以请求总数得到失败率。它衡量用户浏览器观察到的 API HTTP 失败率；本地后端 DogStatsD 指标 `pokemon.attack.validation.count` 仍是后端校验失败率的权威口径，两者不要相加或混作同一序列。
+
+| 配置 | 请求总数指标 | 失败请求数指标 |
 | --- | --- | --- |
-| `battle_start` | `pokemon`, `enemy` | 首次点击继续进入战斗时记一次开局。 |
-| `attack_submit` | `attack_type`, `result:success\|fail`, `status_code`, `latency_ms`, `attack_latency_ms` | 每次攻击实际造成伤害时记玩法成功；抽样校验返回时再记一条校验结果（200 成功，其他状态或网络失败为失败，网络失败的 `status_code` 为 0）。对局结束前仍未收到校验结果的最后一次攻击会补记失败。每种攻击每 3 次才抽样校验，因此该动作总量不等于攻击次数；用它看攻击结果或抽样校验趋势时需按 `attack_type` 区分。`latency_ms` 是服务校验耗时，`attack_latency_ms` 是攻击结算耗时。 |
-| `battle_end` | `result:win\|lose\|abandon`, `rounds`, `duration_ms` | 对局终止时只记一次；篡改判定记为 abandon。这里 `rounds` 表示玩家发起的投掷次数。 |
-| `battle_replay` | `prev_result:win\|lose\|abandon` | 点击再来一局时记录。 |
+| Metric name | `rum.pokemon.attack_validation.requests` | `rum.pokemon.attack_validation.failures` |
+| Event type | `Resources` | `Resources` |
+| Search query | `service:pokemon-battle-frontend @resource.method:POST @resource.url_path:/api/v1/attack-validations` | 同左，并追加 `@resource.status_code:[400 TO 599]` |
+| Track | `Count` → `*` | `Count` → `*` |
+| Group by | `version`, `env`（按需） | 与左侧相同 |
 
-#### 在 Datadog 创建长期指标
+在 Dashboard 添加 **Query Value** widget：查询 `rum.pokemon.attack_validation.failures` 和 `rum.pokemon.attack_validation.requests`，用公式 `100 * failures / requests` 显示百分比，并按 `version` 或 `env` 筛选。若使用 Metrics Explorer / Dashboard formula，先验证生成指标的标签名称与 UI 中显示一致。
 
-在 [RUM Generate Metrics](https://us5.datadoghq.com/rum/generate-metrics) 分别按 action 名过滤，并创建 count 指标。建议仅把枚举属性加入分组维度；`latency_ms`、`duration_ms`、`rounds` 不作为 group by（可在 RUM Explorer 查看分布）。指标名称可按以下命名：
+RUM `resource.status_code` 适用于 fetch/XHR 响应码，但不同浏览器可能无法提供状态码；因此这个 RUM 指标按 HTTP 400–599 统计可见的失败响应，不覆盖无响应码的网络失败，也不等同于所有后端校验失败。具体字段可先在 RUM Explorer 的 Resources 事件中验证。Datadog 自定义 RUM 指标按摄取的 RUM 流量计算并按 Custom Metrics 计费，分组维度只保留低基数的 `version`、`env`。
 
-| 指标 | 过滤条件 | 分组维度 |
-| --- | --- | --- |
-| `rum.pokemon.battle_start.count` | `@type:action @action.name:battle_start` | `@context.pokemon`, `@context.enemy`, `version`, `device.type` |
-| `rum.pokemon.attack_submit.count` | `@type:action @action.name:attack_submit` | `@context.result`, `@context.attack_type`, `@context.status_code`, `version`, `device.type` |
-| `rum.pokemon.battle_end.count` | `@type:action @action.name:battle_end` | `@context.result`, `version`, `device.type` |
-| `rum.pokemon.battle_replay.count` | `@type:action @action.name:battle_replay` | `@context.prev_result`, `version`, `device.type` |
-
-创建前在 RUM Explorer 用相同过滤条件确认 action 属性路径；如租户 UI 将 action 名显示在 `@action.name` 以外的字段，使用 Explorer 展示的字段路径。指标创建后等待数据进入，再在 Metrics Explorer 确认指标可查询。
-
-#### 建议的 Dashboard 制表
-
-建一个 **Pokemon Battle · Business Health** Dashboard，所有图表统一使用 `service:pokemon-battle-frontend`，并添加 `env`、`version`、`device.type` 模板变量：
-
-| Widget | 查询/计算 | 展示 |
-| --- | --- | --- |
-| 开局量 | `rum.pokemon.battle_start.count` | timeseries，按时间查看开局趋势。 |
-| 攻击结算与抽样校验 | `rum.pokemon.attack_submit.count` 按 `result`、`attack_type` 拆分 | timeseries；该动作混合记录实际攻击结算和抽样校验结果，攻击结果在终局补报时会额外出现失败；结合 `status_code` 筛选（非零状态）观察校验结果。 |
-| 终局结果 | `rum.pokemon.battle_end.count`，按 `@context.result` 拆分 | stacked timeseries；观察胜、负、放弃趋势。 |
-| 胜率 | `battle_end{result:win} / (battle_end{result:win} + battle_end{result:lose}) * 100` | query value；排除 abandon。 |
-| 对局结束率（近似） | 同一窗口 `battle_end count / battle_start count * 100` | query value；开局和结束跨窗口时会偏差，适合趋势观察，不作精确 cohort 转化。 |
-| 再来一局率（近似） | `battle_replay count / battle_end count * 100` | query value；表示重开点击相对终局量，按时间窗口对比时会受跨窗口影响。 |
-| 攻击校验延迟 | 在 RUM Explorer 查看 `attack_submit` 的 `latency_ms` 分布 | 分位数/分布视图；不按延迟值分组。 |
-
-#### 建议的 RUM Monitors
-
-- **攻击校验失败率**：只统计含 `status_code` 的 `attack_submit` 校验结果，`status_code:0` 代表网络失败；不把玩法成功事件混入分母。先观察基线再设阈值，短时间样本不足时设置最小事件数，避免低流量误报。
-- **攻击校验延迟**：使用 `latency_ms`（校验请求耗时）观察分布；`attack_latency_ms` 是攻击结算耗时。Datadog RUM Generate Metrics 对数值属性生成长期分位分布的能力需在租户 UI 核实；也可在 RUM Explorer 看原始 action 延迟属性。
-- 胜率和对局结束率先用于 dashboard 观察；在有稳定流量与基线后再设业务告警。
-
-上述 Generate Metrics 和 Dashboard/Monitor 需要在 Datadog 账号 UI 中创建；此代码改动负责准确上报事件，本文给出可直接照做的筛选、维度和计算口径。
+现有 `monitors/attack-validation-failure-rate-monitor.json` 仍监控 DogStatsD 指标 5 分钟失败率超过 20%；此处创建的 RUM 指标用于前端 Dashboard 分析，不会自动替换该 Monitor。前端保持普通 RUM 资源采集，不新增开局、攻击成功、对局完成或重开动作。
 
 
 
