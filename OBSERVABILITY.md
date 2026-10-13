@@ -23,54 +23,8 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Trace（APM）** | `attack/main.go`、`battle/main.go`：`ddhttp.WrapHandler` 包裹入口，`ddhttp.WrapClient` 包裹转发客户端，battle→attack 上下文自动透传。attack 校验时打自定义 span tag `attack.type`。                                                                                                                                                                                                                                                                                                  |
 | **日志（Log）**    | `logWithTrace()` 函数输出 `level= service= dd.trace_id=` 结构化日志，实现 log↔trace 互跳。失败路径（422/500/转发失败）打 ERROR，参数错误打 WARN。                                                                                                                                                                                                                                                                                                                                      |
-| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
+| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标；失败率 = `result:failure` 请求数（按 HTTP 400–599 以及 无响应码 0） / 总请求数。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
 | **RUM**        | `src/monitoring/rum.js` 初始化 Datadog RUM（`PokemonCardWeb`），从 `.env` 读取应用 ID 和客户端 Token，数据上报至 us5.datadoghq.com。采集页面浏览、用户操作、网络请求和 Long Task；会话采样率为 100%，回放采样率为 20%。统一标签为 `service:pokemon-battle-frontend`、`env:school`、`version:1.0.0` 及 `team`。前端开发面板的演练按钮通过 `reportRumAction` / `reportRumError` 上报 `dev_*` action 与 error 事件。 |
-
-### RUM 业务动作与看板
-
-前端 `src/monitoring/rum.js` 提供统一业务事件封装，`BattleScene` 在实际开局、抽样攻击校验返回、对局结束和重开时记录动作。所有维度均为低基数枚举；不发送用户 ID、对局 ID 等唯一值。
-
-| RUM action | 属性 | 口径 |
-| --- | --- | --- |
-| `battle_start` | `pokemon`, `enemy` | 首次点击继续进入战斗时记一次开局。 |
-| `attack_submit` | `attack_type`, `result:success\|fail`, `status_code`, `latency_ms`, `attack_latency_ms` | 每次攻击实际造成伤害时记玩法成功；抽样校验返回时再记一条校验结果（200 成功，其他状态或网络失败为失败，网络失败的 `status_code` 为 0）。对局结束前仍未收到校验结果的最后一次攻击会补记失败。每种攻击每 3 次才抽样校验，因此该动作总量不等于攻击次数；用它看攻击结果或抽样校验趋势时需按 `attack_type` 区分。`latency_ms` 是服务校验耗时，`attack_latency_ms` 是攻击结算耗时。 |
-| `battle_end` | `result:win\|lose\|abandon`, `rounds`, `duration_ms` | 对局终止时只记一次；篡改判定记为 abandon。这里 `rounds` 表示玩家发起的投掷次数。 |
-| `battle_replay` | `prev_result:win\|lose\|abandon` | 点击再来一局时记录。 |
-
-#### 在 Datadog 创建长期指标
-
-在 [RUM Generate Metrics](https://us5.datadoghq.com/rum/generate-metrics) 分别按 action 名过滤，并创建 count 指标。建议仅把枚举属性加入分组维度；`latency_ms`、`duration_ms`、`rounds` 不作为 group by（可在 RUM Explorer 查看分布）。指标名称可按以下命名：
-
-| 指标 | 过滤条件 | 分组维度 |
-| --- | --- | --- |
-| `rum.pokemon.battle_start.count` | `@type:action @action.name:battle_start` | `@context.pokemon`, `@context.enemy`, `version`, `device.type` |
-| `rum.pokemon.attack_submit.count` | `@type:action @action.name:attack_submit` | `@context.result`, `@context.attack_type`, `@context.status_code`, `version`, `device.type` |
-| `rum.pokemon.battle_end.count` | `@type:action @action.name:battle_end` | `@context.result`, `version`, `device.type` |
-| `rum.pokemon.battle_replay.count` | `@type:action @action.name:battle_replay` | `@context.prev_result`, `version`, `device.type` |
-
-创建前在 RUM Explorer 用相同过滤条件确认 action 属性路径；如租户 UI 将 action 名显示在 `@action.name` 以外的字段，使用 Explorer 展示的字段路径。指标创建后等待数据进入，再在 Metrics Explorer 确认指标可查询。
-
-#### 建议的 Dashboard 制表
-
-建一个 **Pokemon Battle · Business Health** Dashboard，所有图表统一使用 `service:pokemon-battle-frontend`，并添加 `env`、`version`、`device.type` 模板变量：
-
-| Widget | 查询/计算 | 展示 |
-| --- | --- | --- |
-| 开局量 | `rum.pokemon.battle_start.count` | timeseries，按时间查看开局趋势。 |
-| 攻击结算与抽样校验 | `rum.pokemon.attack_submit.count` 按 `result`、`attack_type` 拆分 | timeseries；该动作混合记录实际攻击结算和抽样校验结果，攻击结果在终局补报时会额外出现失败；结合 `status_code` 筛选（非零状态）观察校验结果。 |
-| 终局结果 | `rum.pokemon.battle_end.count`，按 `@context.result` 拆分 | stacked timeseries；观察胜、负、放弃趋势。 |
-| 胜率 | `battle_end{result:win} / (battle_end{result:win} + battle_end{result:lose}) * 100` | query value；排除 abandon。 |
-| 对局结束率（近似） | 同一窗口 `battle_end count / battle_start count * 100` | query value；开局和结束跨窗口时会偏差，适合趋势观察，不作精确 cohort 转化。 |
-| 再来一局率（近似） | `battle_replay count / battle_end count * 100` | query value；表示重开点击相对终局量，按时间窗口对比时会受跨窗口影响。 |
-| 攻击校验延迟 | 在 RUM Explorer 查看 `attack_submit` 的 `latency_ms` 分布 | 分位数/分布视图；不按延迟值分组。 |
-
-#### 建议的 RUM Monitors
-
-- **攻击校验失败率**：只统计含 `status_code` 的 `attack_submit` 校验结果，`status_code:0` 代表网络失败；不把玩法成功事件混入分母。先观察基线再设阈值，短时间样本不足时设置最小事件数，避免低流量误报。
-- **攻击校验延迟**：使用 `latency_ms`（校验请求耗时）观察分布；`attack_latency_ms` 是攻击结算耗时。Datadog RUM Generate Metrics 对数值属性生成长期分位分布的能力需在租户 UI 核实；也可在 RUM Explorer 看原始 action 延迟属性。
-- 胜率和对局结束率先用于 dashboard 观察；在有稳定流量与基线后再设业务告警。
-
-上述 Generate Metrics 和 Dashboard/Monitor 需要在 Datadog 账号 UI 中创建；此代码改动负责准确上报事件，本文给出可直接照做的筛选、维度和计算口径。
 
 
 ## 监控表
@@ -123,7 +77,7 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | L3 发起校验 | 投掷触发一次后端校验 | RUM：`@type:resource @http.url:*attack-validations*`，或指标 `trace.http.request.hits{service:battle}` |
 | L4 校验成功 | 这次投掷被判定有效 | 指标：`pokemon.attack.validation.count{result:success}` |
 
-层间背离就是各自的排查入口：L2 占比低 → 疑似白屏/JS 报错（结合「前端 RUM 错误」监控看）；L3 明显低于 L2 → 玩家在投掷但请求没到后端；L4 与 L3 背离 → 422 判负扎堆（即「attack 校验失败率过高」监控的另一种看法）。随着 `battle_start` / `attack_submit` 等业务 action 上报（口径见「RUM 业务动作与看板」），L1/L2 也可以直接按 action 名统计。
+层间背离就是各自的排查入口：L2 占比低 → 疑似白屏/JS 报错（结合「前端 RUM 错误」监控看）；L3 明显低于 L2 → 玩家在投掷但请求没到后端；L4 与 L3 背离 → 422 判负扎堆（即「attack 校验失败率过高」监控的另一种看法）。
 
 
 
@@ -219,45 +173,24 @@ py run_supervisor.py                   # 拉起前端 + battle + attack，输出
 ## 截图
 
 
-### （a）RUM → trace → log → metric
+### （a）RUM → trace → log
 
 ![RUM 会话关联 APM trace](./pictures/rum1.png)
 
 RUM 里点开一次投掷请求（`pokemon-battle-frontend`），关联出该请求的 APM trace，火焰图覆盖 battle→attack 整条链路。
 
-![trace_id 反查日志](./pictures/rum2.png)
+![按服务与状态码过滤日志](./pictures/rum2.png)
 
-Logs Explorer 用 `dd.trace_id` 过滤，命中同一次请求在 battle/attack 打出的结构化日志，实现 trace↔log 互跳。
-
-![trace 服务关联指标](./pictures/rum3.png)
-
-从 trace 视图跳到关联指标：请求量（`trace.http.request.hits`）与宿主机 CPU/内存并排，用于判断流量波动是否撞上资源瓶颈。
+Logs Explorer 用 `service:battle @http.status_code:502` 过滤，直接定位网关转发失败的日志，并可从日志跳回对应 trace。
 
 ### （b）业务指标
 
-**后端：`pokemon.attack.validation.count`**
+![业务指标 pokemon.attack.validation.count](./pictures/rum3.png)
 
-> ⚠️ 截图待补，两种拍法任选（存为 `pictures/business-metric.png` 替换本占位）：
-> 1. **用现成监控器截**：打开「attack 校验失败率过高」监控器的状态页/编辑页——查询图就是本指标算出来的失败率曲线，自带 0.2 阈值线；跑一次故障演练让曲线破线再截，一张图同时证明"指标在流动、阈值在起作用"。
-> 2. **Metrics Explorer 截**：粘贴下方查询按 `result` 分组，成功/失败两条计数曲线同框。
-> 也可以顺带在 rum3 那个指标视图里加一条同样查询重拍，让 (a) 的第三张图本身就带上业务指标。
-
-![业务指标](./pictures/business-metric.png)
-
-attack 每次校验后按 `result:success|failure` 打点计数（DogStatsD → Agent → Datadog），是「attack 校验失败率过高」监控器的数据源。查询：
+attack 每次校验后按 `result:success|failure` 打点计数（DogStatsD → Agent → Datadog），是「attack 校验失败率过高」监控器的数据源。上图为 Metrics Explorer 按 `result` 分组的计数，21:29 前后的尖峰是一波集中投掷，Watchdog 自动标记了异常点。查询：
 
 ```
 sum:pokemon.attack.validation.count{env:school,service:attack,team:bj-xsolla-school-group-2} by {result}.as_count()
-```
-
-**前端：`rum.pokemon.attack_submit.count`（RUM 生成指标）**
-
-![RUM 生成指标 rum.pokemon.attack_submit.count](./pictures/rum-attack-submit-metric.png)
-
-线上 RUM 数据里的 `attack_submit`（提交攻击/抽样校验，完整口径见「RUM 业务动作与看板」）通过 RUM Generate Metrics 聚合成带 `rum.` 前缀的指标，可在 Metrics Explorer 直接查询（图中 16:20 的尖峰是一波集中的投掷）。它是前端侧的业务量口径，与后端的 `trace.http.request.hits{service:battle}`、校验计数互为漏斗 L3 层的交叉验证。查询：
-
-```
-sum:rum.pokemon.attack_submit.count{*}.as_count()
 ```
 
 ### （c）Slack 告警触发与恢复
