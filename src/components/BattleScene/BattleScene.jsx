@@ -6,7 +6,7 @@ import { useThrowAnimation } from "../../hooks/useThrowAnimation";
 import { defaultDamages, useBattle } from "../../hooks/useBattle";
 import { battleAssets } from "../../utils/assetLoader";
 import { requestDebugStatus } from "../../services/attackValidation";
-import { reportRumAction, reportRumError, rumBusinessEvents } from "../../monitoring/rum";
+import { reportRumAction, reportRumError } from "../../monitoring/rum";
 import { GrassPlatform } from "../GrassPlatform/GrassPlatform";
 import { HealthBar } from "../HealthBar/HealthBar";
 import { Pokemon } from "../Pokemon/Pokemon";
@@ -24,11 +24,6 @@ export function BattleScene() {
   const [dialogueText, setDialogueText] = React.useState("");
   const [isTyping, setIsTyping] = React.useState(true);
   const [isBattleActive, setIsBattleActive] = React.useState(false);
-  const battleStartedAtRef = useRef(null);
-  const battleRoundsRef = useRef(0);
-  const battleEndReportedRef = useRef(false);
-  const roundStartedAtRef = useRef(null);
-  const roundReportedCountRef = useRef(0);
   const dialogueSpeedRef = useRef(1);
   const [serviceMessage, setServiceMessage] = React.useState(null);
   const serviceMessageTimerRef = useRef(null);
@@ -48,24 +43,7 @@ export function BattleScene() {
     serviceMessageTimerRef.current = window.setTimeout(() => setServiceMessage(null), 2500);
   }, []);
 
-  const battle = useBattle({
-    isActive: isBattleActive,
-    onServiceDegraded: handleServiceDegraded,
-    onAttackResolved: ({ attackType }) => {
-      battleRoundsRef.current += 1;
-      roundStartedAtRef.current = { attackType, startedAt: performance.now(), count: battleRoundsRef.current };
-    },
-    onAttackResult: ({ attackType, result, statusCode, latencyMs, attackLatencyMs }) => {
-      roundReportedCountRef.current = battleRoundsRef.current;
-      rumBusinessEvents.attackSubmit({
-        attack_type: attackType,
-        result,
-        status_code: statusCode ?? 0,
-        latency_ms: latencyMs,
-        attack_latency_ms: attackLatencyMs,
-      });
-    },
-  });
+  const battle = useBattle({ isActive: isBattleActive, onServiceDegraded: handleServiceDegraded });
   const dialogueMessage = dialoguePhase === "intro"
     ? "野生的妙蛙种子出现了！伊布！准备战斗。 (点击继续)"
     : "天哪！他们已经打起来了，快点击鼠标左键帮助伊布。";
@@ -107,31 +85,6 @@ export function BattleScene() {
   const someoneFainted = battle.playerHp <= 0 || battle.enemyHp <= 0;
   const isGameOver = someoneFainted || battle.isTampered;
 
-  useEffect(() => {
-    if (!isGameOver || battleEndReportedRef.current || battleStartedAtRef.current === null) return;
-    battleEndReportedRef.current = true;
-    const result = battle.isTampered ? "abandon" : battle.enemyHp <= 0 ? "win" : "lose";
-    rumBusinessEvents.battleEnd({
-      result,
-      rounds: battleRoundsRef.current,
-      duration_ms: Math.max(0, Math.round(performance.now() - battleStartedAtRef.current)),
-    });
-  }, [battle.enemyHp, battle.isTampered, battle.playerHp, isGameOver]);
-
-  useEffect(() => {
-    if (!isGameOver) return;
-    const pendingAttack = roundStartedAtRef.current;
-    if (pendingAttack && pendingAttack.count > roundReportedCountRef.current) {
-      roundReportedCountRef.current = pendingAttack.count;
-      rumBusinessEvents.attackSubmit({
-        attack_type: pendingAttack.attackType,
-        result: "fail",
-        status_code: 0,
-        attack_latency_ms: Math.max(0, Math.round(performance.now() - pendingAttack.startedAt)),
-      });
-    }
-  }, [isGameOver]);
-
   // 判定篡改后立即终止对局：停自动攻击、禁投掷，只能重开
   useEffect(() => {
     if (battle.isTampered) setIsBattleActive(false);
@@ -154,12 +107,6 @@ export function BattleScene() {
       }
       setDialoguePhase("battle");
       setIsBattleActive(true);
-      battleStartedAtRef.current = performance.now();
-      battleRoundsRef.current = 0;
-      roundReportedCountRef.current = 0;
-      roundStartedAtRef.current = null;
-      battleEndReportedRef.current = false;
-      rumBusinessEvents.battleStart({ pokemon: "eevee", enemy: "bulbasaur" });
       return;
     }
     if (!isBattleActive) return; // 分出胜负后禁止投掷，点"再来一局"后恢复
@@ -226,13 +173,9 @@ export function BattleScene() {
   };
 
   const resetBattle = () => {
-    rumBusinessEvents.battleReplay({
-      prev_result: battle.isTampered ? "abandon" : battle.enemyHp <= 0 ? "win" : "lose",
-    });
     setDialoguePhase("intro");
     setDialogueVersion((version) => version + 1);
     setIsBattleActive(false);
-    battleStartedAtRef.current = null;
     battle.resetBattle();
   };
 
