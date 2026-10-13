@@ -1,6 +1,8 @@
 # 可观测性文档（OBSERVABILITY）
 
-## 架构
+> 一句话版本：这是一个跑在自己电脑上的宝可梦对战小游戏。我们用 Datadog 把"玩家玩的时候到底发生了什么"看住——请求链路、日志、指标、前端体验四路信号，出了问题发 Slack 告诉我们。
+
+## 架构：一次投掷请求的旅程
 
 ```
 浏览器（前端）
@@ -12,76 +14,75 @@ battle（:8080）───HTTP───▶ attack（:8081）
          （分布式 trace：battle→attack 一条链路）
 ```
 
-- **前端**：浏览器里的宝可梦对战游戏，玩家点击投掷球触发攻击。
-- **battle**：对外网关，接收前端请求，转发给 attack，原样返回状态码， 除传数据外无其他功能。
-- **attack**：校验攻击类型与固定伤害是否匹配，返回 200/400/422。
+- **前端**：浏览器里的对战游戏。玩家点击投掷道具，前端就把"这次攻击的类型和伤害"发给后端校验。
+- **battle（8080）**：唯一入口。它只做一件事：把请求原样转给 attack，再把状态码原样带回来。
+- **attack（8081）**：校验"攻击类型和伤害是否匹配"。200 = 正常，400 = 请求格式不对，422 = 伤害对不上（判负，这局结束）。
 
-## 四大支柱埋点位置
+为什么拆成两个服务？为了演示分布式追踪：一次投掷要穿过两个服务，trace 能把它们串成一条完整的链路。
 
+## 四路信号分别埋在哪
 
-| 支柱             | 在哪里埋的                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Trace（APM）** | `attack/main.go`、`battle/main.go`：`ddhttp.WrapHandler` 包裹入口，`ddhttp.WrapClient` 包裹转发客户端，battle→attack 上下文自动透传。attack 校验时打自定义 span tag `attack.type`。                                                                                                                                                                                                                                                                                                  |
-| **日志（Log）**    | `logWithTrace()` 函数输出 `level= service= dd.trace_id=` 结构化日志，实现 log↔trace 互跳。失败路径（422/500/转发失败）打 ERROR，参数错误打 WARN。                                                                                                                                                                                                                                                                                                                                      |
-| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标；失败率 = `result:failure` 请求数（按 HTTP 400–599 以及 无响应码 0） / 总请求数。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
-| **RUM**        | `src/monitoring/rum.js` 初始化 Datadog RUM（`PokemonCardWeb`），从 `.env` 读取应用 ID 和客户端 Token，数据上报至 us5.datadoghq.com。采集页面浏览、用户操作、网络请求和 Long Task；会话采样率为 100%，回放采样率为 20%。统一标签为 `service:pokemon-battle-frontend`、`env:school`、`version:1.0.0` 及 `team`。前端开发面板的演练按钮通过 `reportRumAction` / `reportRumError` 上报 `dev_*` action 与 error 事件。 |
-
-
-## 监控表
-
-> monitors/ 目录下共 10 个 JSON，与线上 Datadog 监控器一一对应，队友可通过下方命令从 git 复现。
->
-> 考虑到组内成员的工作时间，以及这个项目的大小。我们选择了可持续性最高的告警，仅仅通过 Slack 通知
-
-| 监控器               | 类别      | 阈值                                                | 通知    |
-| ----------------- | ------- | ------------------------------------------------- | ----- |
-| battle 服务健康检查     | 可用性/心跳  | can_connect 5 分钟均值 < 0.9（Agent 每 60 秒 POST 真实业务请求） | Slack |
-| battle 出现 5xx 错误  | 错误（总闸）  | 5 分钟内 5xx 日志 > 3 条                                | Slack |
-| attack 出现 5xx 错误  | 错误（专报）  | 5 分钟内 5xx 日志 > 3 条                                | Slack |
-| CPU 持续过高          | 资源饱和    | system.cpu.user > 95% 持续 15 分钟                    | Slack |
-| 内存可用不足            | 资源饱和    | system.mem.pct_usable < 10% 持续 15 分钟              | Slack |
-| P95 延迟过高          | 延迟 SLO  | battle P95 > 500ms（5 分钟窗口；trace 指标单位是秒，查询里即 0.5） | Slack |
-| attack 校验失败率过高    | 业务结果    | 5 分钟内 `pokemon.attack.validation.count` 失败率 > 20% | Slack |
-| 前端 RUM 错误         | 前端（RUM） | 5 分钟内 RUM error 事件 > 4 条                          | Slack |
-| 前端非预期 4xx        | 前端（RUM） | 5 分钟内非预期 4xx Resource 请求 > 5 条（warning，排除 404/422） | Slack |
-| supervisor 进程故障级别 | 进程/心跳   | failure_level 警告 ≥1、告警 ≥2（2 分钟窗口）                | Slack |
-
-### 阈值理由（结合业务场景）
-
-每条阈值都从下面的部署形态推导而来：
-
-- **单机共享**：前端 dev server、battle、attack、supervisor、Datadog Agent 全部跑在一台日常使用的个人 Windows 电脑上，宿主机负载和游戏组件互相影响。
-- **低流量**：玩家就是组内成员和评审，正常每分钟个位数请求，按大流量网站的比例阈值设计会全部失真。
-- **业务语义**：玩家投掷道具 → 前端提交伤害校验 → 伤害不匹配返回 422 判负结束本局；battle 调 attack 超时 500ms；玩家操作问题只会产生 400/422，5xx 与玩家行为无关。
-
-逐条理由：
-
-- **battle 健康检查 < 0.9**：battle 是游戏唯一入口，挂掉等于所有人都进不了对局。探测本身就是一次真实校验请求，走完 battle→attack 全链路，任一环故障都会失败。每 60 秒一次、5 分钟约 5 个探测点，失败 1 次均值即跌到 0.8 破线——单次真实失败就告警，同时用 5 分钟均值窗口吸收 Agent 采集的瞬时抖动。该监控还开启了 no-data 告警（10 分钟没有探测数据即触发），Agent 或宿主机本身失联也能兜住。
-- **battle/attack 5xx > 3 条/5 分钟**：5xx 只来自服务自身异常或转发失败（battle 的 502/503/504），出现即基础设施问题。正常水位是 0，3 条已远超水位；不再放低是给 attack 重启窗口这类瞬态留余量，避免刷屏。两者分工：只有 attack 红 → 校验服务自身问题；两个一起红 → 多半是 attack 挂了引发 battle 连环 503。
-- **CPU > 95% 持续 15 分钟**：宿主机同时用于日常办公/编译，分钟级 CPU 飙高是常态，按瞬时值告警会天天误报；但游戏全家桶也在这台机器上，持续打满 15 分钟意味着校验请求开始排队（P95 监控会同步变红），此时才值得人来看。
-- **内存可用 < 10% 持续 15 分钟**：同样因为共享宿主机——跌破 10% 后 Windows 开始换页，前端、两个 Go 服务、Agent 一起变慢，进程还可能被系统回收（进而触发 supervisor 监控）。15 分钟持续条件排除大型程序启动时的短时波动。
-- **P95 > 500ms**：500ms 正是 battle 调 attack 的超时上限，到点直接 504、当次投掷判负，玩家感受是"点了没反应/莫名输掉"。P95 破线表示至少 5% 的投掷已走到超时路径，游戏实际不可用，因此阈值直接对齐超时值，而不是另拍一个延迟数字。
-- **校验失败率 > 20%**：422 表示类型合法但伤害不匹配。正常前端上报的伤害与 attack 固定表永远一致，玩家不应收到 422；个位数失败更可能是有人改包作弊，而 20% 的失败率只可能来自系统性问题（前端发错版本、伤害表不同步），此时每个对局中的玩家都会被误判出局。健康检查探不到这类问题（服务不是 5xx），需独立监控。
-- **前端 RUM 错误 > 4 条/5 分钟**：JS 报错直接砸在对局画面上（React 崩溃即白屏），用户立即感知；并发是个位数，4 条扎堆只能来自共性缺陷（坏版本、浏览器兼容），而非分散的偶发错误。
-- **前端非预期 4xx > 5 条/5 分钟（warning）**：前端可见的 4xx 里，422 是游戏机制内的正常结果（伤害不匹配判负）、404 已在查询中排除；剩下的 400/405 等不可能由玩家操作触发——只可能是前端自己把请求发坏了（版本 bug、Content-Type/JSON 构造出错）。此时每个投掷都失败，但健康检查依然全绿（探测的是合法请求）、5xx 监控也不响，属于两者都照不到的盲区，所以单独补一条。流量个位数，warning 5 条足够；critical 阈值刻意抬到 100 万，只警告不打扰。
-- **supervisor 警告 ≥1 / 告警 ≥2**：supervisor 每 3 秒查一次进程、崩溃自动拉起、1 小时内第二次崩溃才停止重启。=1 表示单次崩溃已被拉起、游戏只是短暂中断，暂不打扰人；≥2 表示反复崩溃、自动恢复已放弃、游戏实际下线，需要人介入。
-
-### 游戏漏斗观察口径
-
-一次对局本身就是条业务漏斗。我们没有为漏斗单建监控器，但四层数据横跨 RUM 与后端指标、可互相交叉验证（前端看到的和后端收到的对不对得上），在 RUM Explorer / Metrics Explorer 里按下表即可现查：
-
-| 层 | 含义 | 查询 |
+| 信号 | 埋在哪 | 说人话 |
 | --- | --- | --- |
-| L1 打开页面 | 玩家进入游戏 | RUM：`@type:view service:pokemon-battle-frontend` |
-| L2 有效交互 | 打开后真的开始玩了 | RUM：`@type:view @view.action.count:>0`（交互率 = L2 ÷ L1） |
-| L3 发起校验 | 投掷触发一次后端校验 | RUM：`@type:resource @http.url:*attack-validations*`，或指标 `trace.http.request.hits{service:battle}` |
-| L4 校验成功 | 这次投掷被判定有效 | 指标：`pokemon.attack.validation.count{result:success}` |
+| Trace（链路） | `attack/main.go`、`battle/main.go` | 每个请求进来自动记一条链路，battle→attack 自动串起来；attack 会给 span 打上 `attack.type` 标签，方便按攻击类型筛选。 |
+| Log（日志） | 两个服务里的 `logWithTrace()` | 结构化日志，每条带 `dd.trace_id`——在 Datadog 里从日志能跳到 trace，从 trace 也能跳回日志。出错的请求打 ERROR/WARN。 |
+| Metric（指标） | `attack/main.go` | 每次校验发一条计数 `pokemon.attack.validation.count`（带 result:success/failure 标签），走 DogStatsD 进 Datadog。失败率 = `result:failure` 请求数（按 HTTP 400–599 以及无响应码 0）÷ 总请求数。CPU/内存/磁盘不用我们埋，Datadog Agent 自己采。 |
+| RUM（前端） | `src/monitoring/rum.js` | 在浏览器里初始化 Datadog RUM，采集页面浏览、点击、JS 报错、接口请求——出问题能直接看到用户视角。开发面板的演练按钮会额外上报 `dev_*` 事件。 |
 
-层间背离就是各自的排查入口：L2 占比低 → 疑似白屏/JS 报错（结合「前端 RUM 错误」监控看）；L3 明显低于 L2 → 玩家在投掷但请求没到后端；L4 与 L3 背离 → 422 判负扎堆（即「attack 校验失败率过高」监控的另一种看法）。
+所有信号带统一标签：`env:school`、`version:1.0.0`、`team:bj-xsolla-school-group-2`。
 
+## 监控：10 条，全部只发 Slack
 
+> monitors/ 目录下 10 个 JSON 和线上一一对应，跑 `py sync_datadog_monitor.py` 就能从 git 复现。
+> 只发 Slack 不打电话：课程项目，看 Slack 就够了，也免得半夜被叫醒。
 
-## 文件结构
+| 监控 | 盯什么 | 什么时候报警 |
+| --- | --- | --- |
+| battle 服务健康检查 | 入口活没活（探测会走完整条链路） | 5 分钟里有 1 次探测失败，或 10 分钟完全没有探测数据 |
+| battle 出现 5xx | 网关自身或转发出错 | 5 分钟内 5xx 日志 > 3 条 |
+| attack 出现 5xx | 校验服务自身出错 | 5 分钟内 5xx 日志 > 3 条 |
+| CPU 持续过高 | 机器算力饱和 | system.cpu.user > 95% 持续 15 分钟 |
+| 内存可用不足 | 机器内存见底 | 可用率 < 10% 持续 15 分钟 |
+| P95 延迟过高 | 请求变慢 | battle P95 > 500ms（trace 指标单位是秒，查询里写 0.5） |
+| attack 校验失败率过高 | 业务在失败（422 扎堆） | 5 分钟内失败率 > 20% |
+| 前端 RUM 错误 | 页面 JS 崩了 | 5 分钟内 error 事件 > 4 条 |
+| 前端非预期 4xx | 前端把请求发坏了（400/405 等，已排除 404/422） | 5 分钟内 > 5 条（只发警告） |
+| supervisor 进程故障级别 | 进程崩没崩、自动重启有没有放弃 | 级别 ≥1 发警告，≥2 正式报警 |
+
+### 阈值为什么这么定
+
+三个背景，所有阈值都是从这里推出来的：
+
+1. **一台机器装所有东西**：前端、两个后端、supervisor、Datadog Agent 全挤在同一台平时还用来办公的 Windows 电脑上；
+2. **流量很小**：玩家就是组员和评审，每分钟个位数请求，大厂那种"按百分比"的阈值在这里没有意义；
+3. **游戏规则**：伤害不匹配返回 422、这局判负；battle 等 attack 最多 500ms；玩家操作问题只会产生 400/422，**5xx 跟玩家无关，只跟我们的代码有关**。
+
+逐条说：
+
+- **battle 健康检查**：Agent 每 60 秒真的发一次校验请求（会走完 battle→attack 全链路，任何一环挂都会失败）。5 分钟里只要失败 1 次就报警——入口挂了所有人都进不了游戏，宁可灵敏。10 分钟完全没探测数据也报警：万一是 Agent 或整台机器没了，也能发现。
+- **5xx 两条（>3 条/5 分钟）**：正常情况 5 分钟内一条 5xx 都不该有，3 条足够说明出事；不设成 1 条是给 attack 重启那几十秒留余地，免得刷屏。分成 battle/attack 两条是为了定位：只有 attack 报 → 校验服务自己坏了；两个一起报 → 多半是 attack 挂了，battle 转发不动跟着报 503。
+- **CPU >95% 持续 15 分钟**：这台机器平时还开浏览器、编译，短时飙高太正常了，按瞬时值报警会天天误报。但连续 15 分钟打满，说明校验请求已经在排队（P95 那条会一起红），这时候才值得人过来看。
+- **内存 <10% 持续 15 分钟**：内存见底后 Windows 开始狂换页，前端、两个服务、Agent 一起变慢。同样用"持续 15 分钟"过滤掉开大型软件的瞬时波动。
+- **P95 > 500ms**：500ms 就是 battle 等 attack 的超时上限，一到点这局直接判负。P95 破线意味着每 20 次投掷至少 1 次卡在超时边缘——游戏基本没法玩了。所以阈值直接对齐超时值，不是另拍的数字。
+- **校验失败率 >20%**：正常玩家永远不该收到 422（前端伤害表和后端一致）。个位数失败多半是有人改包作弊；到 20% 只可能是我们自己出了系统性问题（比如前端发了错的版本），这时所有正在玩的玩家都会被误判输。健康检查发现不了它（服务不是 5xx），所以要单独盯。
+- **前端 JS 报错 >4 条/5 分钟**：JS 一崩玩家直接白屏，是最直观的"坏了"。平时没几个人在线，4 条扎堆只能是新版本有问题。
+- **前端非预期 4xx >5 条/5 分钟（只警告）**：422 是游戏机制内的正常结果、404 已排除，剩下的 400/405 只可能是前端自己把请求发坏了。这种时候健康检查还是绿的、5xx 也不响，是个盲区，所以补一条。critical 阈值故意放到一百万，等于"只提醒、不叫人"。
+- **supervisor 故障级别**：supervisor 每 3 秒看一眼三个进程，崩了自动拉起；1 小时内崩第二次就放弃重启。=1（警告）：崩过一次但已经自己好了；≥2（报警）：反复崩、自动恢复没用了，游戏实际下线。
+
+### 怎么看"玩家是不是真的玩起来了"
+
+不用额外建监控，四层数据现查就有（RUM Explorer / Metrics Explorer），哪层断了一目了然：
+
+| 层 | 意思 | 查询 |
+| --- | --- | --- |
+| L1 打开页面 | 来了多少人 | RUM：`@type:view service:pokemon-battle-frontend` |
+| L2 真的玩了 | 打开后有交互的人 | RUM：`@type:view @view.action.count:>0` |
+| L3 发起校验 | 投掷触发了后端请求 | RUM：`@type:resource @http.url:*attack-validations*`，或指标 `trace.http.request.hits{service:battle}` |
+| L4 校验成功 | 投掷被判定有效 | 指标：`pokemon.attack.validation.count{result:success}` |
+
+L2 低 → 可能白屏/JS 报错；L3 比 L2 少很多 → 玩家点了但请求没到后端；L4 比 L3 少很多 → 422 判负扎堆（就是校验失败率那条监控的另一种看法）。
+
+## 文件结构：哪些文件和可观测性有关
 
 ```
 backend/
@@ -90,104 +91,92 @@ backend/
   datadog/
     http_check.d/conf.yaml    # battle/attack 健康检查
     pokemon.d/conf.yaml       # 日志采集
-monitors/                   # 监控器定义（as-code，与线上监控器一一对应）
-  battle-health-monitor.json          # ↔ 线上：battle服务健康检查
-  battle-5xx-monitor.json             # ↔ 线上：battle出现5xx错误
-  attack-5xx-monitor.json             # ↔ 线上：attack出现5xx错误
-  cpu-monitor.json                    # ↔ 线上：CPU持续过高
-  memory-monitor.json                 # ↔ 线上：内存可用不足
-  battle-latency-p95-monitor.json     # ↔ 线上：P95延迟过高
-  attack-validation-failure-rate-monitor.json  # ↔ 线上：attack校验失败率过高
-  pokemoncard-supervisor-failure-level.json  # ↔ 线上：进程故障级别监控
-  rum-frontend-error-monitor.json     # ↔ 线上：前端JS异常
-  rum-frontend-unexpected-4xx-monitor.json  # ↔ 线上：前端非预期4xx
+monitors/                   # 监控器定义（as-code，与线上一一对应）
+  battle-health-monitor.json          # ↔ battle服务健康检查
+  battle-5xx-monitor.json             # ↔ battle出现5xx错误
+  attack-5xx-monitor.json             # ↔ attack出现5xx错误
+  cpu-monitor.json                    # ↔ CPU持续过高
+  memory-monitor.json                 # ↔ 内存可用不足
+  battle-latency-p95-monitor.json     # ↔ P95延迟过高
+  attack-validation-failure-rate-monitor.json  # ↔ attack校验失败率过高
+  pokemoncard-supervisor-failure-level.json  # ↔ 进程故障级别监控
+  rum-frontend-error-monitor.json     # ↔ 前端JS异常
+  rum-frontend-unexpected-4xx-monitor.json  # ↔ 前端非预期4xx
 ```
 
-> 注：其余 team:bj-xsolla-school-group-2 的监控与本项目无关
+> 注：Datadog 上同 team 标签下其余监控不是本项目的。
 
+## Datadog Agent 是怎么配的
 
-## Datadog Agent 启动与配置
+Agent 是装在这台电脑上的一个 Windows 服务（MSI 安装），负责四件事：采系统指标（CPU/内存/磁盘）、收 DogStatsD 指标、按配置探测 battle/attack、收集日志文件。配置就两处：
 
-系统指标（CPU/内存/磁盘）、日志采集、battle/attack 主动健康探测、DogStatsD 指标接收，全部依赖本机 Datadog Agent（Windows MSI 安装，以系统服务常驻）。核心配置两处：
+1. `C:\ProgramData\DataDog\datadog.yaml`：主配置。我们把主机名固定成 `zhang-pokemon-backend`（监控器里按 host 过滤靠它，换机器要记得改），并开了 `logs_enabled: true`。
+2. `C:\ProgramData\DataDog\conf.d\`：把仓库里 `backend/datadog/` 的两份配置复制进去（目录名必须一致，Agent 按目录名认集成）：
 
-- `C:\ProgramData\DataDog\datadog.yaml`：主配置。本机已固定 `hostname: zhang-pokemon-backend` 并开启 `logs_enabled: true`——监控器里的 `host:zhang-pokemon-backend` 过滤依赖这个固定主机名，换机器或改主机名时需同步更新。
-- `C:\ProgramData\DataDog\conf.d\`：各集成检查的子配置。仓库 `backend/datadog/` 下的两份需复制过去（目录名必须一致，Agent 按目录名识别检查类型）：
-
-| 仓库文件 | 复制到 | 作用 |
+| 复制什么 | 到哪 | 干什么 |
 | --- | --- | --- |
-| `backend/datadog/http_check.d/conf.yaml` | `C:\ProgramData\DataDog\conf.d\http_check.d\conf.yaml` | 每 60 秒 POST 真实业务请求，探测 battle（走全链路）和 attack |
-| `backend/datadog/pokemon.d/conf.yaml` | `C:\ProgramData\DataDog\conf.d\pokemon.d\conf.yaml` | 采集 `C:/dd-logs/` 下 battle/attack/supervisor 三个日志文件 |
+| `backend/datadog/http_check.d/conf.yaml` | `conf.d\http_check.d\conf.yaml` | 每 60 秒发一次真实业务请求探活 |
+| `backend/datadog/pokemon.d/conf.yaml` | `conf.d\pokemon.d\conf.yaml` | 收集 `C:/dd-logs/` 下三个服务的日志 |
 
-日志来源：`run_supervisor.py` 把三个服务的输出 tee 到 `C:\dd-logs\*.log`（supervisor.log 由脚本直写），Agent 只负责 tail，所以日志采集的前提是 supervisor 在跑。
+日志从哪来：`run_supervisor.py` 启动时自动把前端、battle、attack 的输出写到 `C:\dd-logs\*.log`，Agent 只管读这些文件——所以日志能被采集的前提是 supervisor 在跑。
 
-### 启动 / 重启 / 验证（管理员 PowerShell）
-
-修改 conf.d 下任何配置后必须重启 Agent 才生效：
+改完配置要重启才生效（管理员 PowerShell）：
 
 ```powershell
-Restart-Service datadogagent                                       # 重启 Agent 服务
-& "C:\Program Files\Datadog\Datadog Agent\bin\agent.exe" status    # 整体状态（含各检查是否在跑）
-& "C:\Program Files\Datadog\Datadog Agent\bin\agent.exe" check http_check   # 单跑一次探测，验证配置
+Restart-Service datadogagent                                     # 重启 Agent
+& "C:\Program Files\Datadog\Datadog Agent\bin\agent.exe" status  # 看整体状态
+& "C:\Program Files\Datadog\Datadog Agent\bin\agent.exe" check http_check  # 单跑一次探测验证
 ```
 
-### 启动顺序与 DogStatsD
-
-attack 的业务指标和 supervisor 的 `failure_level` 都通过 UDP 发往 `127.0.0.1:8125`（attack 固定此地址；supervisor 可用根目录 `.env` 的 `DATADOG_AGENT_HOST` / `DD_DOGSTATSD_PORT` 覆盖）。DogStatsD 是 fire-and-forget：Agent 没在跑数据就丢、不会补发，所以**先起 Agent，再起 supervisor/后端**。根目录 `.env`（参考 `.env.example`）相关变量：
+一个容易踩的坑：attack 和 supervisor 的指标走 UDP 发到本机 8125，**发出去就没了**（Agent 不在跑就丢、不会补），所以先起 Agent、再起后端。`.env`（参考 `.env.example`）里的相关变量：
 
 | 变量 | 用途 |
 | --- | --- |
-| `DATADOG_AGENT_HOST` / `DD_DOGSTATSD_PORT` | supervisor 发指标的目标地址（默认 127.0.0.1:8125） |
-| `DD_API_KEY` / `DD_APP_KEY` / `DD_SITE` | `sync_datadog_monitor.py` 同步监控器到线上用 |
+| `DATADOG_AGENT_HOST` / `DD_DOGSTATSD_PORT` | supervisor 发指标到哪（默认 127.0.0.1:8125） |
+| `DD_API_KEY` / `DD_APP_KEY` / `DD_SITE` | `sync_datadog_monitor.py` 同步监控器用 |
 | `VITE_DD_APPLICATION_ID` / `VITE_DD_CLIENT_TOKEN` | 前端 RUM 初始化（只放 client token，绝不放 API/App key） |
 
-
-## 应用监控器
-
-用 `sync_datadog_monitor.py` 批量创建或更新（as-code）：
+## 应用监控器（as-code）
 
 ```bash
 # .env 里配好 DD_API_KEY / DD_APP_KEY / DD_SITE
-py sync_datadog_monitor.py --dry-run   # 先预览
+py sync_datadog_monitor.py --dry-run   # 先预览会改什么
 py sync_datadog_monitor.py             # 实际应用
 ```
 
+## 复现方式：从零到有告警
 
-## 复现方式（从零到有告警）
-
-把散在各节的步骤串成一条路，新队友按顺序执行即可：
+新队友按顺序照抄即可：
 
 ```powershell
-# 1. 根目录 .env：按 .env.example 填好（各变量用途见「Datadog Agent 启动与配置」）
-# 2. 把 backend/datadog/ 下两份 conf.yaml 复制进 C:\ProgramData\DataDog\conf.d\（对照表见上节）
+# 1. 根目录 .env 按 .env.example 填好（变量用途见上一节表格）
+# 2. 把 backend/datadog/ 下两份 conf.yaml 复制进 C:\ProgramData\DataDog\conf.d\
 # 3. 按依赖顺序启动：Agent → supervisor → 浏览器
 Restart-Service datadogagent           # 重启 Agent 加载新 conf
-py run_supervisor.py                   # 拉起前端 + battle + attack，输出 tee 到 C:\dd-logs\
-# 4. 浏览器打开 http://localhost:5173，开始战斗并投掷几次，让指标/日志/RUM 先注册
-# 5. 同步监控器（见上节两条命令）
+py run_supervisor.py                   # 拉起前端 + battle + attack，日志写 C:\dd-logs\
+# 4. 浏览器打开 http://localhost:5173，开始战斗并投掷几次，让指标/日志/RUM 先有数据
+# 5. 同步监控器（上一节两条命令）
 ```
 
-验证四件事：`agent.exe status` 里 http_check / pokemon 两个检查在跑；Metrics Explorer 查得到 `pokemon.attack.validation.count`；Logs Explorer 有 `service:battle` 且带 `dd.trace_id`；RUM Explorer 能看到 `pokemon-battle-frontend` 的 view。之后用前端开发面板的故障演练按钮制造 5xx/422，Slack 频道应能收到对应告警。
-
-
+然后验证四件事：`agent.exe status` 里 http_check / pokemon 两个检查在跑；Metrics Explorer 查得到 `pokemon.attack.validation.count`；Logs Explorer 有 `service:battle` 的日志且带 `dd.trace_id`；RUM Explorer 能看到 `pokemon-battle-frontend`。最后用前端开发面板的演练按钮制造几个 5xx/422，Slack 频道应该收到对应告警。
 
 ## 截图
-
 
 ### （a）RUM → trace → log
 
 ![RUM 会话关联 APM trace](./pictures/rum1.png)
 
-RUM 里点开一次投掷请求（`pokemon-battle-frontend`），关联出该请求的 APM trace，火焰图覆盖 battle→attack 整条链路。
+从 RUM 里的一次投掷请求点进 APM trace，能看到请求穿过前端、battle、attack 的完整链路。
 
 ![按服务与状态码过滤日志](./pictures/rum2.png)
 
-Logs Explorer 用 `service:battle @http.status_code:502` 过滤，直接定位网关转发失败的日志，并可从日志跳回对应 trace。
+在日志页按 `service:battle @http.status_code:502` 过滤，一眼定位网关转发失败的日志。
 
 ### （b）业务指标
 
 ![业务指标 pokemon.attack.validation.count](./pictures/rum3.png)
 
-attack 每次校验后按 `result:success|failure` 打点计数（DogStatsD → Agent → Datadog），是「attack 校验失败率过高」监控器的数据源。上图为 Metrics Explorer 按 `result` 分组的计数，21:29 前后的尖峰是一波集中投掷，Watchdog 自动标记了异常点。查询：
+业务指标 `pokemon.attack.validation.count` 按 result 分组，成功/失败一目了然；21:29 前后的尖峰是一波集中投掷，Watchdog 自动标了异常点。它就是「attack 校验失败率过高」监控器的数据源。查询：
 
 ```
 sum:pokemon.attack.validation.count{env:school,service:attack,team:bj-xsolla-school-group-2} by {result}.as_count()
@@ -196,7 +185,6 @@ sum:pokemon.attack.validation.count{env:school,service:attack,team:bj-xsolla-sch
 ### （c）Slack 告警触发与恢复
 
 ![Slack 告警触发与恢复](./pictures/slack-alert-trigger-recovery.png)
-上图展示：
 
 - **触发**：battle 5 分钟内出现超过 3 条 5xx 日志，告警变红，通知到 Slack 频道
 - **恢复**：错误数回落后，自动发送恢复通知
