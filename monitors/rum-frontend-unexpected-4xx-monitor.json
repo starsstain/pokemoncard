@@ -1,0 +1,22 @@
+{
+  "name": "[宝可梦] frontend 非预期 4xx",
+  "type": "rum alert",
+  "query": "rum(\"@type:resource service:pokemon-battle-frontend @resource.status_code:[400 TO 499] -@resource.status_code:404 -@resource.status_code:422\").rollup(\"count\").last(\"5m\") > 1000000",
+  "message": "{{#is_warning}}⚠️ 前端过去 5 分钟出现 {{value}} 条非预期 4xx Resource 请求。请在 RUM Explorer 排查 service:pokemon-battle-frontend，筛选 4xx 并排除 404、422。{{/is_warning}}\n{{#is_recovery}}✅ 前端非预期 4xx 已恢复正常。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "tags": [
+    "service:pokemon-battle-frontend",
+    "team:bj-xsolla-school-group-2",
+    "monitor:rum",
+    "env:school",
+    "version:1.0.0"
+  ],
+  "options": {
+    "thresholds": {
+      "warning": 5,
+      "critical": 1000000
+    },
+    "notify_no_data": false,
+    "on_missing_data": "default",
+    "evaluation_delay": 60
+  }
+}
