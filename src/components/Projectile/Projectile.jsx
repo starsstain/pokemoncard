@@ -2,8 +2,7 @@
 import { animationConfig } from "../../config/animationConfig";
 
 export function Projectile({ sprite, start, target, arcHeight, speedMultiplier, onComplete }) {
-  if (!sprite) return null;
-
+  // hooks 必须无条件执行，sprite 为空时在 hooks 之后提前返回
   const [position, setPosition] = useState(start);
   const completedRef = useRef(false);
   const speedRef = useRef(speedMultiplier);
@@ -13,6 +12,9 @@ export function Projectile({ sprite, start, target, arcHeight, speedMultiplier, 
   }, [speedMultiplier]);
 
   useEffect(() => {
+    // sprite 为空时不启动动画；sprite 出现/变化时重新开始
+    if (!sprite) return;
+
     let frameId;
     let previousTime;
     let progress = 0;
@@ -41,7 +43,9 @@ export function Projectile({ sprite, start, target, arcHeight, speedMultiplier, 
 
     frameId = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(frameId);
-  }, [arcHeight, onComplete, start, target]);
+  }, [sprite, arcHeight, onComplete, start, target]);
+
+  if (!sprite) return null;
 
   return (
     <div
