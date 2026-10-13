@@ -25,7 +25,7 @@ const tamperVerdictDelay = 900;
 
 // 战斗状态：血量由前端独立结算，不等后端；
 // 校验请求按抽样异步发出：400/422 判定“数据被篡改”（必须重开），5xx/网络故障仅提示。
-export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {}) {
+export function useBattle({ onEnemyHit, onServiceDegraded, onAttackResult, onAttackResolved, isActive = true } = {}) {
   const [battle, setBattle] = useState({
     playerHp: pokemonStats.player.maxHp,
     enemyHp: pokemonStats.enemy.maxHp,
@@ -73,12 +73,19 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
   }, [onServiceDegraded, updateBattle]);
 
   // 真实校验：抽样发出的请求回来后走统一反应
-  const checkReport = useCallback(async (attackType, damage) => {
+  const checkReport = useCallback(async (attackType, damage, startedAt, attackStartedAt) => {
     const round = roundRef.current;
     const status = await validateAttack(attackType, damage);
     if (!mountedRef.current || round !== roundRef.current) return; // 期间重开游戏，旧结果不影响新一局
+    onAttackResult?.({
+      attackType,
+      result: status === 200 ? "success" : "fail",
+      statusCode: status,
+      latencyMs: Math.round(performance.now() - startedAt),
+      attackLatencyMs: Math.round(performance.now() - attackStartedAt),
+    });
     reactToStatus(status);
-  }, [reactToStatus]);
+  }, [onAttackResult, reactToStatus]);
 
   // dev 面板模拟一条校验结果，与真实校验走同一套反应
   const simulateStatus = useCallback((status) => {
@@ -98,11 +105,11 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
   }, []);
 
   // 抽样上报：三种攻击各自计数，每累计满 3 次就上报“当前这次”
-  const reportSampled = useCallback((attackType, damage) => {
+  const reportSampled = useCallback((attackType, damage, attackStartedAt = performance.now()) => {
     const count = (reportCountersRef.current[attackType] ?? 0) + 1;
     reportCountersRef.current[attackType] = count;
     if (count % reportEvery !== 0) return;
-    void checkReport(attackType, damage);
+    void checkReport(attackType, damage, performance.now(), attackStartedAt);
   }, [checkReport]);
 
   // 通用攻击流程：冲向对手 -> 碰撞瞬间独立扣血并抽样上报 -> 弹回
@@ -117,13 +124,15 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
 
     const attackType = attackTypes[attacker];
     const damage = damageRef.current[attackType];
+    const attackStartedAt = performance.now();
+    onAttackResolved?.({ attackType, result: "success" });
     updateBattle({
       [defenderKey]: true,
       [`${defender}Hp`]: Math.max(0, battleRef.current[`${defender}Hp`] - damage),
     });
 
     if (defender === "enemy") onEnemyHit?.();
-    reportSampled(attackType, damage);
+    reportSampled(attackType, damage, attackStartedAt);
 
     // 碰撞后停顿一下再弹回，让撞击感更明显
     await wait(battleConfig.attackReturnDuration);
@@ -133,7 +142,7 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
     await wait(battleConfig.hitFlashDuration - battleConfig.attackReturnDuration);
     if (!mountedRef.current) return;
     updateBattle({ [defenderKey]: false });
-  }, [onEnemyHit, reportSampled, updateBattle, wait]);
+  }, [onAttackResolved, onEnemyHit, reportSampled, updateBattle, wait]);
 
   // 双方自动攻击循环：任一方倒下或数据被判篡改后停止
   useEffect(() => {
@@ -201,9 +210,11 @@ export function useBattle({ onEnemyHit, onServiceDegraded, isActive = true } = {
   const submitDamage = useCallback((defender, attackType) => {
     if (battleRef.current.isTampered) return;
     const damage = damageRef.current[attackType];
+    const attackStartedAt = performance.now();
+    onAttackResolved?.({ attackType, result: "success" });
     dealDamage(defender, damage);
-    reportSampled(attackType, damage);
-  }, [dealDamage, reportSampled]);
+    reportSampled(attackType, damage, attackStartedAt);
+  }, [dealDamage, onAttackResolved, reportSampled]);
 
   // 倒下或篡改后重置战斗；局数递增，使在途请求的结果不再生效
   const resetBattle = useCallback(() => {
