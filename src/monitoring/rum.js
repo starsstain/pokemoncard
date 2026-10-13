@@ -25,7 +25,7 @@ if (applicationId && clientToken) {
     traceSampleRate: 100,
   });
 
-  datadogRum.setGlobalContextProperty("team", import.meta.env.VITE_DD_TEAM || "pokemoncard");
+  datadogRum.setGlobalContextProperty("team", import.meta.env.VITE_DD_TEAM || "bj-xsolla-school-group-2");
 }
 
 export const isRumEnabled = Boolean(applicationId && clientToken);
