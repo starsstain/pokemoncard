@@ -23,27 +23,9 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Trace（APM）** | `attack/main.go`、`battle/main.go`：`ddhttp.WrapHandler` 包裹入口，`ddhttp.WrapClient` 包裹转发客户端，battle→attack 上下文自动透传。attack 校验时打自定义 span tag `attack.type`。                                                                                                                                                                                                                                                                                                  |
 | **日志（Log）**    | `logWithTrace()` 函数输出 `level= service= dd.trace_id=` 结构化日志，实现 log↔trace 互跳。失败路径（422/500/转发失败）打 ERROR，参数错误打 WARN。                                                                                                                                                                                                                                                                                                                                      |
-| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
+| **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标；失败率 = `result:failure` 请求数（按 HTTP 400–599 以及 无响应码 0） / 总请求数。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
 | **RUM**        | `src/monitoring/rum.js` 初始化 Datadog RUM（`PokemonCardWeb`），从 `.env` 读取应用 ID 和客户端 Token，数据上报至 us5.datadoghq.com。采集页面浏览、用户操作、网络请求和 Long Task；会话采样率为 100%，回放采样率为 20%。统一标签为 `service:pokemon-battle-frontend`、`env:school`、`version:1.0.0` 及 `team`。 |
 
-
-### 在 RUM Generate Metrics 创建攻击接口失败率
-
-前端已开启 `trackResources`，RUM 会采集 `fetch`/XHR 资源事件。可在 [RUM Generate Metrics](https://us5.datadoghq.com/rum/generate-metrics) 基于攻击校验 API 的 **Resources** 建立两个 count 指标，再在 Dashboard 用失败数除以请求总数得到失败率。它衡量用户浏览器观察到的 API HTTP 失败率；本地后端 DogStatsD 指标 `pokemon.attack.validation.count` 仍是后端校验失败率的权威口径，两者不要相加或混作同一序列。
-
-| 配置 | 请求总数指标 | 失败请求数指标 |
-| --- | --- | --- |
-| Metric name | `rum.pokemon.attack_validation.requests` | `rum.pokemon.attack_validation.failures` |
-| Event type | `Resources` | `Resources` |
-| Search query | `service:pokemon-battle-frontend @resource.method:POST @resource.url_path:/api/v1/attack-validations` | 同左，并追加 `@resource.status_code:[400 TO 599]` |
-| Track | `Count` → `*` | `Count` → `*` |
-| Group by | `version`, `env`（按需） | 与左侧相同 |
-
-在 Dashboard 添加 **Query Value** widget：查询 `rum.pokemon.attack_validation.failures` 和 `rum.pokemon.attack_validation.requests`，用公式 `100 * failures / requests` 显示百分比，并按 `version` 或 `env` 筛选。若使用 Metrics Explorer / Dashboard formula，先验证生成指标的标签名称与 UI 中显示一致。
-
-RUM `resource.status_code` 适用于 fetch/XHR 响应码，但不同浏览器可能无法提供状态码；因此这个 RUM 指标按 HTTP 400–599 统计可见的失败响应，不覆盖无响应码的网络失败，也不等同于所有后端校验失败。具体字段可先在 RUM Explorer 的 Resources 事件中验证。Datadog 自定义 RUM 指标按摄取的 RUM 流量计算并按 Custom Metrics 计费，分组维度只保留低基数的 `version`、`env`。
-
-现有 `monitors/attack-validation-failure-rate-monitor.json` 仍监控 DogStatsD 指标 5 分钟失败率超过 20%；此处创建的 RUM 指标用于前端 Dashboard 分析，不会自动替换该 Monitor。前端保持普通 RUM 资源采集，不新增开局、攻击成功、对局完成或重开动作。
 
 
 
