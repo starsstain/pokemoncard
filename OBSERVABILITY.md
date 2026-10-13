@@ -26,8 +26,6 @@ battle（:8080）───HTTP───▶ attack（:8081）
 | **指标（Metric）** | attack 每次校验后通过 DogStatsD 发 pokemon.attack.validation.count{result:success\|failure, env, version, service, team} 业务指标。系统资源（CPU/内存/磁盘）由 Datadog Agent 自动采集。|
 | **RUM**        | `src/monitoring/rum.js` 初始化 Datadog RUM（`PokemonCardWeb`），从 `.env` 读取应用 ID 和客户端 Token，数据上报至 us5.datadoghq.com。采集页面浏览、用户操作、网络请求和 Long Task；会话采样率为 100%，回放采样率为 20%。统一标签为 `service:pokemon-battle-frontend`、`env:school`、`version:1.0.0` 及 `team`。前端开发面板的演练按钮通过 `reportRumAction` / `reportRumError` 上报 `dev_*` action 与 error 事件。 |
 
-
-
 ### RUM 业务动作与看板
 
 前端 `src/monitoring/rum.js` 提供统一业务事件封装，`BattleScene` 在实际开局、抽样攻击校验返回、对局结束和重开时记录动作。所有维度均为低基数枚举；不发送用户 ID、对局 ID 等唯一值。
@@ -73,7 +71,6 @@ battle（:8080）───HTTP───▶ attack（:8081）
 - 胜率和对局结束率先用于 dashboard 观察；在有稳定流量与基线后再设业务告警。
 
 上述 Generate Metrics 和 Dashboard/Monitor 需要在 Datadog 账号 UI 中创建；此代码改动负责准确上报事件，本文给出可直接照做的筛选、维度和计算口径。
-
 
 
 ## 监控表
