@@ -2,7 +2,7 @@
   "name": "[宝可梦] frontend 非预期 4xx",
   "type": "rum alert",
   "query": "rum(\"@type:resource service:pokemon-battle-frontend @resource.status_code:[400 TO 499] -@resource.status_code:404 -@resource.status_code:422\").rollup(\"count\").last(\"5m\") > 1000000",
-  "message": "{{#is_warning}}⚠️ 前端过去 5 分钟出现 {{value}} 条非预期 4xx Resource 请求。请在 RUM Explorer 排查 service:pokemon-battle-frontend，筛选 4xx 并排除 404、422。{{/is_warning}}\n{{#is_recovery}}✅ 前端非预期 4xx 已恢复正常。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_warning}}⚠️ 前端过去 5 分钟出现 {{value}} 条非预期 4xx Resource 请求。请在 RUM Explorer 排查 service:pokemon-battle-frontend，筛选 4xx 并排除 404、422。{{/is_warning}}\n{{#is_recovery}}✅ 前端非预期 4xx 已恢复正常。{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [前端非预期 4xx 资源请求（已排除 404、422）](https://us5.datadoghq.com/rum/sessions?query=%40type%3Aresource%20service%3Apokemon-battle-frontend%20%40resource.status_code%3A%5B400%20TO%20499%5D%20-%40resource.status_code%3A404%20-%40resource.status_code%3A422&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [后端 battle 4xx 请求记录](https://us5.datadoghq.com/apm/traces?query=service%3Abattle%20env%3Aschool%20%40http.status_code%3A%5B400%20TO%20499%5D&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "service:pokemon-battle-frontend",
     "team:bj-xsolla-school-group-2",

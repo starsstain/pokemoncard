@@ -2,7 +2,7 @@
   "name": "[宝可梦] CPU持续过高",
   "type": "query alert",
   "query": "avg(last_15m):avg:system.cpu.user{host:zhang-pokemon-backend} > 95",
-  "message": "{{#is_alert}}🟡 CPU 持续过高：15 分钟内始终高于 95%，当前 {{value}}%。\n阈值设计为“持续超标才告警”，短时飙高（如游戏加载）不触发。排查：Processes 面板找吃 CPU 的进程。{{/is_alert}}\n{{#is_recovery}}✅ CPU 已回落。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🟡 CPU 持续过高：15 分钟内始终高于 95%，当前 {{value}}%。\n阈值设计为“持续超标才告警”，短时飙高（如游戏加载）不触发。排查：Processes 面板找吃 CPU 的进程。{{/is_alert}}\n{{#is_recovery}}✅ CPU 已回落。{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [zhang-pokemon-backend CPU 曲线](https://us5.datadoghq.com/metric/explorer?exp_metric=system.cpu.user&exp_scope=host%3Azhang-pokemon-backend&exp_agg=avg&exp_row_type=metric&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [主机详情（Infrastructure，看 CPU/内存/负载全貌）](https://us5.datadoghq.com/infrastructure?filter=host%3Azhang-pokemon-backend)\n- [该主机 ERROR 日志](https://us5.datadoghq.com/logs?query=host%3Azhang-pokemon-backend%20status%3Aerror&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
     "service:health",
