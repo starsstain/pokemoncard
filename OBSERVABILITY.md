@@ -177,11 +177,11 @@ py run_supervisor.py                   # 拉起前端 + battle + attack，输出
 
 ![RUM 会话关联 APM trace](./pictures/rum1.png)
 
-RUM 里点开一次投掷请求（`pokemon-battle-frontend`），关联出该请求的 APM trace，火焰图覆盖 battle→attack 整条链路。
+RUM 里点开一次校验请求，关联出该请求的 APM trace，火焰图覆盖 battle→attack 整条链路。
 
-![按服务与状态码过滤日志](./pictures/rum2.png)
+![1](./pictures/rum2.png)
 
-Logs Explorer 用 `service:battle @http.status_code:502` 过滤，直接定位网关转发失败的日志，并可从日志跳回对应 trace。
+从 trace 查看关联日志
 
 ### （b）业务指标
 
