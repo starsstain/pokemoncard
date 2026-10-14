@@ -129,7 +129,7 @@ def send_failure_level(service: Service, value: int) -> None:
     except (OSError, ValueError) as error:
         print(f"[Datadog] could not send failure_level metric: {error}", file=sys.stderr)
 
-def supervisor_log(level: str, message: str) -> None:
+def supervisor_log(level: str, message: str, **attributes: object) -> None:
     """Emit a Datadog-compatible JSON log record."""
     status = {"ERROR": "error", "WARNING": "warn"}.get(level, "info")
     record = json.dumps(
@@ -141,6 +141,7 @@ def supervisor_log(level: str, message: str) -> None:
             "version": "1.0.0",
             "team": "bj-xsolla-school-group-2",
             "message": message,
+            **attributes,
         },
         ensure_ascii=False,
     )
@@ -153,7 +154,13 @@ def supervisor_log(level: str, message: str) -> None:
         print(f"[supervisor] could not write {SUPERVISOR_LOG}: {error}", file=sys.stderr)
 
 def start_service(service: Service) -> None:
-    supervisor_log("INFO", f"component={service.name} event=starting command={service.command!r}")
+    supervisor_log(
+        "INFO",
+        "service starting",
+        component=service.name,
+        event="starting",
+        command=service.command,
+    )
     environment = os.environ | service.environment
     if platform.system() == "Windows":
         LOG_DIRECTORY.mkdir(parents=True, exist_ok=True)
@@ -245,7 +252,10 @@ def supervise() -> int:
                 level = "ERROR" if repeated_within_window else "WARNING"
                 supervisor_log(
                     level,
-                    f"component={service.name} event=unhealthy reason={reason!r}",
+                    "service unhealthy",
+                    component=service.name,
+                    event="unhealthy",
+                    reason=reason,
                 )
                 if repeated_within_window:
                     warning_until.pop(service.name, None)
@@ -260,13 +270,15 @@ def supervise() -> int:
                     restart_disabled.add(service.name)
                     supervisor_log(
                         "ERROR",
-                        f"component={service.name} event=restart_disabled "
-                        "reason=two_failures_within_one_hour",
+                        "service restart disabled",
+                        component=service.name,
+                        event="restart_disabled",
+                        reason="two_failures_within_one_hour",
                     )
                     continue
                 start_service(service)
     except KeyboardInterrupt:
-        supervisor_log("INFO", "event=stopping")
+        supervisor_log("INFO", "supervisor stopping", event="stopping")
         return 0
     finally:
         for service in SERVICES:

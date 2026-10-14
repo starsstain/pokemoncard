@@ -2,7 +2,7 @@
   "name": "[宝可梦] frontend RUM errors",
   "type": "rum alert",
   "query": "rum(\"@type:error service:pokemon-battle-frontend\").rollup(\"count\").last(\"5m\") > 4",
-  "message": "{{#is_alert}}🚨 The frontend recorded {{value}} RUM errors in the last 5 minutes (threshold: {{threshold}}).\n\nInvestigate RUM Explorer: service:pokemon-battle-frontend @type:error.{{/is_alert}}\n{{#is_recovery}}✅ Frontend RUM error volume has recovered.{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🚨 frontend 收到 {{value}} RUM errors 在 5 分钟之内 (threshold: {{threshold}}).\n\nInvestigate RUM Explorer: service:pokemon-battle-frontend @type:error.{{/is_alert}}\n{{#is_recovery}}✅ Frontend RUM error 已经恢复.{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "service:pokemon-battle-frontend",
     "team:bj-xsolla-school-group-2",
