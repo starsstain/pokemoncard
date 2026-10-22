@@ -2,7 +2,7 @@
   "name": "[宝可梦] 内存可用不足",
   "type": "query alert",
   "query": "avg(last_15m):avg:system.mem.pct_usable{host:zhang-pokemon-backend} < 0.1",
-  "message": "{{#is_alert}}🟡 可用内存持续不足：15 分钟内低于 10%，当前 {{value}}。\n注意：Windows 上内存指标用 system.mem.pct_usable（可用率），不存在 system.mem.pct。排查：Processes 面板看内存占用进程。{{/is_alert}}\n{{#is_recovery}}✅ 内存已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🟡 可用内存持续不足：15 分钟内低于 10%，当前 {{value}}。\n注意：Windows 上内存指标用 system.mem.pct_usable（可用率），不存在 system.mem.pct。排查：Processes 面板看内存占用进程。{{/is_alert}}\n{{#is_recovery}}✅ 内存已恢复。{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [zhang-pokemon-backend 可用内存曲线](https://us5.datadoghq.com/metric/explorer?exp_metric=system.mem.pct_usable&exp_scope=host%3Azhang-pokemon-backend&exp_agg=avg&exp_row_type=metric&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [主机详情（Infrastructure，看 CPU/内存/负载全貌）](https://us5.datadoghq.com/infrastructure?filter=host%3Azhang-pokemon-backend)\n- [该主机 ERROR 日志（看是否有 OOM）](https://us5.datadoghq.com/logs?query=host%3Azhang-pokemon-backend%20status%3Aerror&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
     "service:health",

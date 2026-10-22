@@ -2,7 +2,7 @@
   "name": "[宝可梦] battle服务健康检查",
   "type": "query alert",
   "query": "avg(last_5m):avg:network.http.can_connect{instance:battle_health} by {host} < 0.9",
-  "message": "{{#is_alert}}🔴 battle 服务健康检查失败（Agent 每 60 秒 POST 真实业务请求，未返回 200），当前可用率 {{value}}。\n探测走 battle→attack 全链路，任一服务挂掉都会触发。排查：确认两个进程是否存活、查 service:battle 的 ERROR 日志。{{/is_alert}}\n{{#is_recovery}}✅ battle 服务健康检查已恢复。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🔴 battle 服务健康检查失败（Agent 每 60 秒 POST 真实业务请求，未返回 200），当前可用率 {{value}}。\n探测走 battle→attack 全链路，任一服务挂掉都会触发。排查：确认两个进程是否存活、查 service:battle 的 ERROR 日志。{{/is_alert}}\n{{#is_recovery}}✅ battle 服务健康检查已恢复。{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [battle ERROR 日志](https://us5.datadoghq.com/logs?query=service%3Abattle%20status%3Aerror&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [下游 attack ERROR 日志](https://us5.datadoghq.com/logs?query=service%3Aattack%20status%3Aerror&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [battle 全部请求记录（看是否还有流量、状态码分布）](https://us5.datadoghq.com/apm/traces?query=service%3Abattle%20env%3Aschool&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n- [{{host.name}} 主机详情（确认主机/Agent 是否在线）](https://us5.datadoghq.com/infrastructure?filter=host%3A{{host.name}})\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
     "service:battle",

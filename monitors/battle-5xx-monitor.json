@@ -2,7 +2,7 @@
   "name": "[宝可梦] battle出现5xx错误",
   "type": "log alert",
   "query": "logs(\"service:battle @http.status_code:[500 TO 599]\").index(\"*\").rollup(\"count\").last(\"5m\") > 3",
-  "message": "{{#is_alert}}🔴 battle 5 分钟内出现超过 {{threshold}} 条 5xx 日志（当前 {{value}} 条）。\n可能原因：转发 attack 失败（502/503/504）、故障注入测试。排查：Logs 搜 service:battle @http.status_code:[500 TO 599] 看具体状态码分布。{{/is_alert}}\n{{#is_recovery}}✅ battle 5xx 错误已恢复（窗口内错误数回落）。{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🔴 battle 5 分钟内出现超过 {{threshold}} 条 5xx 日志（当前 {{value}} 条）。\n可能原因：转发 attack 失败（502/503/504）、故障注入测试。排查：Logs 搜 service:battle @http.status_code:[500 TO 599] 看具体状态码分布。{{/is_alert}}\n{{#is_recovery}}✅ battle 5xx 错误已恢复（窗口内错误数回落）。{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [battle 5xx 日志（看状态码分布）](https://us5.datadoghq.com/logs?query=service%3Abattle%20%40http.status_code%3A%5B500%20TO%20599%5D&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [battle 5xx 请求记录（点开看火焰图）](https://us5.datadoghq.com/apm/traces?query=service%3Abattle%20env%3Aschool%20%40http.status_code%3A%3E%3D500&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n- [下游 attack 全部请求记录（判断 attack 是否挂掉/超时）](https://us5.datadoghq.com/apm/traces?query=service%3Aattack%20env%3Aschool&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "env:school",
     "service:battle",

@@ -2,7 +2,7 @@
   "name": "[宝可梦] frontend RUM errors",
   "type": "rum alert",
   "query": "rum(\"@type:error service:pokemon-battle-frontend\").rollup(\"count\").last(\"5m\") > 4",
-  "message": "{{#is_alert}}🚨 The frontend recorded {{value}} RUM errors in the last 5 minutes (threshold: {{threshold}}).\n\nInvestigate RUM Explorer: service:pokemon-battle-frontend @type:error.{{/is_alert}}\n{{#is_recovery}}✅ Frontend RUM error volume has recovered.{{/is_recovery}}\n@slack-bj_xsolla_school-poke-alert",
+  "message": "{{#is_alert}}🚨 frontend 收到 {{value}} RUM errors 在 5 分钟之内 (threshold: {{threshold}}).\n\nInvestigate RUM Explorer: service:pokemon-battle-frontend @type:error.{{/is_alert}}\n{{#is_recovery}}✅ Frontend RUM error 已经恢复.{{/is_recovery}}\n\n**排查（告警时段：触发前 15 分钟 ~ 触发后 5 分钟）：**\n- [前端 RUM 错误列表](https://us5.datadoghq.com/rum/sessions?query=%40type%3Aerror%20service%3Apokemon-battle-frontend&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [前端失败的资源请求（4xx/5xx）](https://us5.datadoghq.com/rum/sessions?query=%40type%3Aresource%20service%3Apokemon-battle-frontend%20%40resource.status_code%3A%3E%3D400&from_ts={{eval \"last_triggered_at_epoch-15*60*1000\"}}&to_ts={{eval \"last_triggered_at_epoch+5*60*1000\"}}&live=false)\n- [后端 battle 失败请求记录（判断是否后端引起）](https://us5.datadoghq.com/apm/traces?query=service%3Abattle%20env%3Aschool%20%40http.status_code%3A%3E%3D400&start={{eval \"last_triggered_at_epoch-15*60*1000\"}}&end={{eval \"last_triggered_at_epoch+5*60*1000\"}}&paused=true)\n@slack-bj_xsolla_school-poke-alert",
   "tags": [
     "service:pokemon-battle-frontend",
     "team:bj-xsolla-school-group-2",

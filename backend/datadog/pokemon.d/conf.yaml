@@ -1,6 +1,19 @@
 # 日志采集：run_supervisor.py 会把 battle/attack/supervisor 的输出重定向到 C:/dd-logs/。
 logs:
   - type: file
+    path: C:/dd-logs/frontend.log
+    service: pokemon-battle-frontend
+    source: pokemon-frontend
+    tags:
+      - env:school
+      - version:1.0.0
+      - team:bj-xsolla-school-group-2
+    log_processing_rules:
+      - type: multi_line
+        name: frontend_entry_starts_with_time
+        pattern: \d{2}:\d{2}:\d{2}
+
+  - type: file
     path: C:/dd-logs/battle.log
     service: battle
     source: pokemon-battle
