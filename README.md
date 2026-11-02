@@ -1,6 +1,5 @@
 # Pokemon Fight
 
-[poke.yijungao.com](https://poke.yijungao.com)
 
 一个像素风的宝可梦对战演示项目。玩家点击画面投掷道具协助伊布对战妙蛙种子；前端会按采样频率将攻击伤害提交给后端校验，发现伤害被篡改时会结束本局。
 
